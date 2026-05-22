@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Medically Modern — Reorder Confirmation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <meta name="theme-color" content="#0B6E4F">
+</head>
+<body>
+
+  <!-- Loading screen -->
+  <div id="loading-screen">
+    <div class="spinner"></div>
+    <p>Loading your order details...</p>
+  </div>
+
+  <!-- Error screen -->
+  <div id="error-screen" style="display:none;">
+    <div class="error-icon">⚠️</div>
+    <h2>Something went wrong</h2>
+    <p id="error-message">We couldn't load your information. Please try your link again or contact us.</p>
+  </div>
+
+  <!-- Main app -->
+  <div id="app" style="display:none;">
+
+    <!-- Header -->
+    <div class="patient-header">
+      <h1 id="patient-name"></h1>
+      <div class="header-info">
+        <span>Subscription: <strong id="header-subscription"></strong></span>
+        <span>Next order: <strong id="header-next-order"></strong></span>
+      </div>
+    </div>
+
+    <!-- Section 1: Reorder Decision -->
+    <div class="form-section" id="section-decision">
+      <h2>Do you want to receive your next order?</h2>
+      <div class="option-group" id="decision-options">
+        <button class="option-btn" data-value="confirm" onclick="selectDecision('confirm')">
+          <div class="radio-dot"></div>
+          <span>Confirm my order</span>
+        </button>
+        <button class="option-btn" data-value="delay" onclick="selectDecision('delay')">
+          <div class="radio-dot"></div>
+          <span>Delay my order</span>
+        </button>
+        <button class="option-btn danger" data-value="cancel" onclick="selectDecision('cancel')">
+          <div class="radio-dot"></div>
+          <span>Cancel all orders</span>
+        </button>
+      </div>
+
+      <!-- Delay sub-section -->
+      <div id="delay-section" class="hidden fade-in">
+        <div class="field-group">
+          <label>What date should we move your next order to?</label>
+          <p class="helper-text">You'll receive a new confirmation text 20 days before that order.</p>
+          <input type="date" id="delay-date" onchange="handleDelayDateChange()">
+          <div id="delay-date-error" class="alert alert-error hidden" style="margin-top:0.5rem;"></div>
+        </div>
+        <div style="text-align:center; margin: 0.75rem 0; color: var(--text-muted);">— or —</div>
+        <button class="btn btn-outline" onclick="selectIndefinite()">Delay Indefinitely</button>
+        <div id="indefinite-notice" class="alert alert-warning hidden" style="margin-top:0.75rem;">
+          Because you did not select a new order date, we will not be following up with a new confirmation text. You will need to reach out to us when you are ready to place your next order.
+        </div>
+      </div>
+
+      <!-- Cancel warning -->
+      <div id="cancel-warning" class="alert alert-error hidden fade-in">
+        <strong>Warning:</strong> This will cancel all ongoing orders.
+      </div>
+    </div>
+
+    <!-- Section 2: Order Details -->
+    <div class="form-section hidden" id="section-order">
+      <h2>Order Details</h2>
+      <p class="helper-text" style="margin-bottom:1rem;">Review and update your current order. If you don't want a certain item, set the quantity to 0.</p>
+
+      <!-- CGM Type (sensors) -->
+      <div id="cgm-group" class="field-group hidden">
+        <label>CGM Type</label>
+        <select id="sensors-type"></select>
+      </div>
+
+      <!-- Infusion Set 1 -->
+      <div id="infusion1-group" class="field-group hidden">
+        <label>Infusion Set 1</label>
+        <div class="qty-row">
+          <select id="infusion-set-1"></select>
+          <input type="number" class="qty-input" id="inf-qty-1" min="0" max="9" value="0" onchange="updateQtyTotal()">
+        </div>
+      </div>
+
+      <!-- Infusion Set 2 -->
+      <div id="infusion2-group" class="field-group hidden">
+        <label>Infusion Set 2</label>
+        <div class="qty-row">
+          <select id="infusion-set-2"></select>
+          <input type="number" class="qty-input" id="inf-qty-2" min="0" max="9" value="0" onchange="updateQtyTotal()">
+        </div>
+      </div>
+
+      <!-- Quantity total -->
+      <div id="qty-total-display" class="qty-total hidden">
+        Total infusion sets: <strong id="qty-total-value">0</strong> / <span id="qty-max-value">3</span>
+      </div>
+
+      <!-- Cartridge / Supplies type -->
+      <div id="supplies-group" class="field-group hidden">
+        <label>Cartridge Type (based on pump)</label>
+        <select id="supplies-type" disabled>
+          <!-- Read-only display of pump/cartridge type -->
+        </select>
+      </div>
+    </div>
+
+    <!-- Section 3: Address -->
+    <div class="form-section hidden" id="section-address">
+      <h2>Shipping Address</h2>
+      <div class="field-group">
+        <label>Current address</label>
+        <input type="text" id="address-input" placeholder="Start typing to search...">
+        <p class="helper-text">Edit to update your shipping address. ZIP code must be 5 digits.</p>
+        <div id="address-error" class="alert alert-error hidden" style="margin-top:0.5rem;"></div>
+      </div>
+    </div>
+
+    <!-- Section 4: Insurance -->
+    <div class="form-section hidden" id="section-insurance">
+      <h2>Insurance</h2>
+      <div class="insurance-display" id="insurance-current">
+        <strong>Current insurance: <span id="ins-type-display"></span></strong>
+        <span>Member ID: <span id="ins-member-display"></span></span>
+      </div>
+
+      <div class="field-group">
+        <label>Will your insurance change before your order date?</label>
+        <div class="option-group" id="insurance-options">
+          <button class="option-btn" data-value="no" onclick="selectInsuranceChange('no')">
+            <div class="radio-dot"></div>
+            <span>No</span>
+          </button>
+          <button class="option-btn" data-value="yes" onclick="selectInsuranceChange('yes')">
+            <div class="radio-dot"></div>
+            <span>Yes</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- New insurance fields -->
+      <div id="new-insurance-section" class="hidden fade-in">
+        <div class="field-group">
+          <label>New Insurance Type</label>
+          <select id="new-insurance-type" onchange="handleNewInsuranceType()">
+            <option value="">Select insurance...</option>
+            <option value="United">United</option>
+            <option value="Aetna">Aetna</option>
+            <option value="Cigna">Cigna</option>
+            <option value="Anthem BCBS">Anthem BCBS</option>
+            <option value="Medicare">Medicare</option>
+            <option value="Medicaid">Medicaid</option>
+            <option value="NYSHIP">NYSHIP</option>
+            <option value="Fidelis">Fidelis</option>
+            <option value="WellCare">WellCare</option>
+            <option value="Humana">Humana</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+
+        <div id="other-insurance-group" class="field-group hidden">
+          <label>Insurance Name</label>
+          <input type="text" id="other-insurance-name" placeholder="Enter your insurance name">
+        </div>
+
+        <div class="field-group">
+          <label>New Member ID</label>
+          <input type="text" id="new-member-id" placeholder="Enter your new member ID">
+        </div>
+
+        <div class="field-group">
+          <label>Insurance Card (optional)</label>
+          <p class="helper-text">Uploading your insurance card helps us verify your coverage faster.</p>
+          <div class="upload-area" id="upload-area" onclick="document.getElementById('card-input').click()">
+            <p>Tap to upload front & back of your insurance card</p>
+            <input type="file" id="card-input" accept="image/*,.pdf" multiple style="display:none" onchange="handleCardUpload(event)">
+          </div>
+          <div class="upload-preview" id="upload-preview"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Submit button -->
+    <div id="submit-section" class="hidden">
+      <button class="btn btn-primary" id="submit-btn" onclick="handleSubmit()">
+        Submit
+      </button>
+
+      <!-- Skip option for delay 20+ days -->
+      <button class="btn btn-skip hidden" id="skip-btn" onclick="handleSkip()" style="margin-top:0.75rem;">
+        Skip — just update my order date
+      </button>
+    </div>
+
+    <!-- Footer -->
+    <div class="form-footer">
+      If you had any issues with this form, please text/call us.
+    </div>
+  </div>
+
+  <!-- Success screen -->
+  <div id="success-screen">
+    <div class="success-icon">✓</div>
+    <h2 id="success-title">Thank you!</h2>
+    <p id="success-message"></p>
+  </div>
+
+  <!-- Modal template -->
+  <div class="modal-overlay hidden" id="modal-overlay">
+    <div class="modal">
+      <h3 id="modal-title"></h3>
+      <p id="modal-message"></p>
+      <div class="btn-group">
+        <button class="btn btn-outline" id="modal-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="modal-confirm" onclick="confirmModal()">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
