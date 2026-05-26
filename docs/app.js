@@ -428,7 +428,7 @@ function stepQty(setNum, delta) {
 function getMaxQty() {
   const ins = (state.patientData?.primaryInsurance || "").toLowerCase();
   // Anthem/CareCentrix = 9, everything else = 3
-  if (ins.includes("anthem") || ins.includes("carecentrix") || ins.includes("cigna")) return 9;
+  if (ins.includes("anthem") || ins.includes("carecentrix")) return 9;
   return 3;
 }
 
