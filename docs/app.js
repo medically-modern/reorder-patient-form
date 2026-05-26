@@ -42,6 +42,24 @@ const state = {
   isOptionalFlow: false,    // delay >= 20 days means steps 2-4 optional
 };
 
+// ─── Lock horizontal swipe on wizard ───
+
+(function lockHorizontalSwipe() {
+  let startX = 0, startY = 0;
+  document.addEventListener("touchstart", (e) => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener("touchmove", (e) => {
+    const dx = Math.abs(e.touches[0].clientX - startX);
+    const dy = Math.abs(e.touches[0].clientY - startY);
+    // If horizontal movement dominates, prevent it
+    if (dx > 10 && dx > dy * 1.5) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+})();
+
 // ─── Init ───
 
 document.addEventListener("DOMContentLoaded", init);
@@ -131,7 +149,10 @@ function renderWizard() {
   renderOrderOptions();
 
   // Step 3: Address
-  document.getElementById("current-address-display").textContent = pd.address || "No address on file";
+  const addressEl = document.getElementById("current-address-display");
+  const addrText = pd.address || "No address on file";
+  addressEl.textContent = addrText;
+  applyAddressShrink(addressEl, addrText);
 
   // Step 4: Insurance
   const insType = pd.primaryInsurance || "Unknown";
@@ -688,7 +709,7 @@ function renderReview() {
   // Address
   if (state.addressChanged && state.newAddress) {
     hasChanges = true;
-    html += reviewItem("Address", pd.address || "—", state.newAddress);
+    html += reviewItem("Address", pd.address || "—", state.newAddress, true);
   } else {
     // Show "Same as on file" for insurance context
   }
@@ -711,12 +732,13 @@ function renderReview() {
   updateReviewOop();
 }
 
-function reviewItem(label, before, after) {
+function reviewItem(label, before, after, isAddress) {
+  const shrinkClass = isAddress ? ` address-text${after.length > 60 ? ' address-xlong' : after.length > 40 ? ' address-long' : ''}` : '';
   return `<div class="review-item">
     <div class="review-item-label">${escHtml(label)}</div>
-    <div class="review-item-before">${escHtml(before)}</div>
+    <div class="review-item-before${shrinkClass}">${escHtml(before)}</div>
     <div class="review-item-arrow">→</div>
-    <div class="review-item-after">${escHtml(after)}</div>
+    <div class="review-item-after${shrinkClass}">${escHtml(after)}</div>
   </div>`;
 }
 
@@ -971,6 +993,16 @@ function formatDate(dateStr) {
 function maskMemberId(id) {
   if (!id || id.length < 4) return id || "N/A";
   return "••••••••" + id.slice(-4);
+}
+
+// ─── Address shrink for long text ───
+function applyAddressShrink(el, text) {
+  el.classList.remove("address-long", "address-xlong");
+  if (text.length > 60) {
+    el.classList.add("address-xlong");
+  } else if (text.length > 40) {
+    el.classList.add("address-long");
+  }
 }
 
 function simplifyInsurance(raw) {
