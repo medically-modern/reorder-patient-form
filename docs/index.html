@@ -78,7 +78,7 @@
               <p class="date-card-day" id="order-date-day"></p>
             </div>
 
-            <p class="step-question">Does this still work?</p>
+            <p class="step-question">Confirm order date?</p>
 
             <div class="decision-buttons">
               <button class="decision-btn decision-confirm" id="btn-confirm" onclick="selectOrderDecision('confirm')">
@@ -108,7 +108,6 @@
         <div class="wizard-panel" id="panel-2">
           <div class="panel-content">
             <h2 class="panel-title">Order Details</h2>
-            <p class="panel-subtitle">Review and adjust what you'd like in this shipment.</p>
 
             <!-- Sensors -->
             <div class="order-section" id="section-sensors">
@@ -121,27 +120,8 @@
                   <select id="sensor-type-select" class="native-select"></select>
                 </div>
               </div>
-              <label class="opt-out-checkbox">
-                <input type="checkbox" id="sensors-optout" onchange="toggleOptOut('sensors')">
-                <span>Not ordering sensors this time</span>
-              </label>
-            </div>
-
-            <!-- Cartridges -->
-            <div class="order-section" id="section-cartridges">
-              <div class="order-section-header">
-                <h3>Cartridges</h3>
-              </div>
-              <div class="order-section-body" id="cartridges-body">
-                <div class="field-group">
-                  <label class="field-label" for="cartridge-type-select">Cartridge Type (based on pump)</label>
-                  <select id="cartridge-type-select" class="native-select" disabled></select>
-                </div>
-              </div>
-              <label class="opt-out-checkbox">
-                <input type="checkbox" id="cartridges-optout" onchange="toggleOptOut('cartridges')">
-                <span>Not ordering cartridges this time</span>
-              </label>
+              <button class="opt-out-btn" id="sensors-optout-btn" onclick="toggleOptOutBtn('sensors')">Not ordering sensors this time</button>
+              <input type="checkbox" id="sensors-optout" style="display:none" onchange="toggleOptOut('sensors')">
             </div>
 
             <!-- Infusion Sets -->
@@ -153,17 +133,19 @@
                 <!-- Set 1 -->
                 <div class="infusion-set-row" id="infusion-row-1">
                   <div class="infusion-set-label" id="infusion-label-1"></div>
-                  <div class="field-group">
-                    <label class="field-label" for="inf-brand-1">Type</label>
-                    <select id="inf-brand-1" class="native-select" onchange="handleInfBrandChange(1)"></select>
-                  </div>
-                  <div class="field-group">
-                    <label class="field-label" for="inf-size-1">Size</label>
-                    <select id="inf-size-1" class="native-select" onchange="handleInfSizeChange(1)"></select>
-                  </div>
-                  <div class="field-group">
-                    <label class="field-label" for="inf-tubing-1">Tubing Length</label>
-                    <select id="inf-tubing-1" class="native-select"></select>
+                  <div class="infusion-inline-row">
+                    <div class="field-group">
+                      <label class="field-label" for="inf-brand-1">Type</label>
+                      <select id="inf-brand-1" class="native-select" onchange="handleInfBrandChange(1)"></select>
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label" for="inf-size-1">Size</label>
+                      <select id="inf-size-1" class="native-select" onchange="handleInfSizeChange(1)"></select>
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label" for="inf-tubing-1">Length</label>
+                      <select id="inf-tubing-1" class="native-select"></select>
+                    </div>
                   </div>
                   <div class="qty-stepper-row">
                     <span class="qty-label">Boxes</span>
@@ -181,17 +163,19 @@
                     <span>Set 2</span>
                     <button class="remove-set-btn" onclick="removeSecondSet()">✕ remove</button>
                   </div>
-                  <div class="field-group">
-                    <label class="field-label" for="inf-brand-2">Type</label>
-                    <select id="inf-brand-2" class="native-select" onchange="handleInfBrandChange(2)"></select>
-                  </div>
-                  <div class="field-group">
-                    <label class="field-label" for="inf-size-2">Size</label>
-                    <select id="inf-size-2" class="native-select" onchange="handleInfSizeChange(2)"></select>
-                  </div>
-                  <div class="field-group">
-                    <label class="field-label" for="inf-tubing-2">Tubing Length</label>
-                    <select id="inf-tubing-2" class="native-select"></select>
+                  <div class="infusion-inline-row">
+                    <div class="field-group">
+                      <label class="field-label" for="inf-brand-2">Type</label>
+                      <select id="inf-brand-2" class="native-select" onchange="handleInfBrandChange(2)"></select>
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label" for="inf-size-2">Size</label>
+                      <select id="inf-size-2" class="native-select" onchange="handleInfSizeChange(2)"></select>
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label" for="inf-tubing-2">Length</label>
+                      <select id="inf-tubing-2" class="native-select"></select>
+                    </div>
                   </div>
                   <div class="qty-stepper-row">
                     <span class="qty-label">Boxes</span>
@@ -206,10 +190,23 @@
                 <!-- Add second set link -->
                 <a class="add-set-link" id="add-set-link" onclick="addSecondSet()">+ Add a second infusion set</a>
               </div>
-              <label class="opt-out-checkbox">
-                <input type="checkbox" id="infusion-optout" onchange="toggleOptOut('infusion')">
-                <span>Not ordering infusion sets this time</span>
-              </label>
+              <button class="opt-out-btn" id="infusion-optout-btn" onclick="toggleOptOutBtn('infusion')">Not ordering infusion sets this time</button>
+              <input type="checkbox" id="infusion-optout" style="display:none" onchange="toggleOptOut('infusion')">
+            </div>
+
+            <!-- Cartridges -->
+            <div class="order-section" id="section-cartridges">
+              <div class="order-section-header">
+                <h3>Cartridges</h3>
+              </div>
+              <div class="order-section-body" id="cartridges-body">
+                <div class="field-group">
+                  <label class="field-label" for="cartridge-type-select">Cartridge Type</label>
+                  <select id="cartridge-type-select" class="native-select" disabled></select>
+                </div>
+              </div>
+              <button class="opt-out-btn" id="cartridges-optout-btn" onclick="toggleOptOutBtn('cartridges')">Not ordering cartridges this time</button>
+              <input type="checkbox" id="cartridges-optout" style="display:none" onchange="toggleOptOut('cartridges')">
             </div>
 
             <!-- Empty state warning -->
@@ -244,17 +241,21 @@
             <h2 class="panel-title">Shipping Address</h2>
 
             <div class="current-address-card" id="current-address-card">
-              <p class="current-label">Address on file:</p>
               <p class="current-value address-text" id="current-address-display"></p>
+            </div>
+
+            <div class="apt-warning hidden" id="apt-warning">
+              <span class="apt-warning-icon">!</span>
+              <span>No apartment or unit number detected. If you live in an apartment, please update your address.</span>
             </div>
 
             <p class="step-question">Same address?</p>
 
             <div class="decision-buttons decision-buttons-small">
-              <button class="decision-btn decision-small" id="btn-address-same" onclick="selectAddressChange(false)">
+              <button class="decision-btn decision-small decision-yes" id="btn-address-same" onclick="selectAddressChange(false)">
                 <span>Yes</span>
               </button>
-              <button class="decision-btn decision-small" id="btn-address-new" onclick="selectAddressChange(true)">
+              <button class="decision-btn decision-small decision-no" id="btn-address-new" onclick="selectAddressChange(true)">
                 <span>No, change it</span>
               </button>
             </div>
@@ -281,7 +282,6 @@
             <h2 class="panel-title">Insurance</h2>
 
             <div class="insurance-card">
-              <p class="current-label">Insurance on file:</p>
               <p class="current-value" id="ins-type-display"></p>
               <p class="current-sub" id="ins-member-display"></p>
             </div>
@@ -289,10 +289,10 @@
             <p class="step-question">Same insurance?</p>
 
             <div class="decision-buttons decision-buttons-small">
-              <button class="decision-btn decision-small" id="btn-ins-same" onclick="selectInsuranceChange('no')">
+              <button class="decision-btn decision-small decision-yes" id="btn-ins-same" onclick="selectInsuranceChange('no')">
                 <span>Yes</span>
               </button>
-              <button class="decision-btn decision-small" id="btn-ins-new" onclick="selectInsuranceChange('yes')">
+              <button class="decision-btn decision-small decision-no" id="btn-ins-new" onclick="selectInsuranceChange('yes')">
                 <span>No, it's changed</span>
               </button>
             </div>

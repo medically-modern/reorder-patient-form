@@ -140,6 +140,7 @@ function renderWizard() {
   const addrText = pd.address || "No address on file";
   addressEl.textContent = addrText;
   applyAddressShrink(addressEl);
+  checkApartmentWarning(addrText);
 
   // Step 4: Insurance
   const insType = pd.primaryInsurance || "Unknown";
@@ -435,6 +436,11 @@ function selectOrderDecision(value) {
     state.isOptionalFlow = false;
   } else if (value === "delay") {
     delayPicker.classList.remove("hidden");
+    // Default the calendar to the current order date
+    const dateInput = document.getElementById("delay-date-input");
+    if (state.patientData?.nextOrder && !dateInput.value) {
+      dateInput.value = state.patientData.nextOrder;
+    }
     // Don't show continue until date is selected
     footer.style.display = "none";
     state.delayDate = null;
@@ -461,7 +467,7 @@ function handleDelayDateChange() {
   maxDate.setDate(maxDate.getDate() + 56);
 
   if (currentOrderDate && selectedDate < currentOrderDate) {
-    errorDiv.textContent = "Sorry, this is the earliest insurance will cover your reorder. Please text/call us if there is an extraordinary situation.";
+    errorDiv.textContent = "Sorry, your scheduled order date is the earliest insurance will cover your reorder. Please text/call us if there is an extraordinary situation.";
     errorDiv.classList.remove("hidden");
     document.getElementById("step1-footer").style.display = "none";
     return;
@@ -501,6 +507,18 @@ function handleDelayDateChange() {
 }
 
 // ─── Step 2: Order Details ───
+
+
+// ─── Opt-out button handler ───
+
+function toggleOptOutBtn(section) {
+  const btn = document.getElementById(`${section}-optout-btn`);
+  const checkbox = document.getElementById(`${section}-optout`);
+  if (!btn || !checkbox) return;
+  checkbox.checked = !checkbox.checked;
+  btn.classList.toggle("active", checkbox.checked);
+  toggleOptOut(section);
+}
 
 function toggleOptOut(section) {
   const checkbox = document.getElementById(`${section}-optout`);
@@ -1093,6 +1111,7 @@ function attachAutocomplete() {
     input.value = place.formatted_address.replace(/(\b\d{5})-\d{4}\b/g, "$1");
     state.newAddress = input.value;
     state.addressSelectedFromGoogle = true;
+      checkApartmentWarning(state.newAddress);
 
     if (place.geometry?.location) {
       state.addressCoords.lat = place.geometry.location.lat();
@@ -1124,6 +1143,20 @@ function maskMemberId(id) {
 }
 
 // ─── Address shrink for long text ───
+
+// ─── Apartment/unit number warning ───
+
+function checkApartmentWarning(address) {
+  const warning = document.getElementById("apt-warning");
+  if (!warning || !address) return;
+  const aptPatterns = /\b(apt|apartment|unit|suite|ste|#|floor|fl|bldg|building|rm|room)\b/i;
+  if (aptPatterns.test(address)) {
+    warning.classList.add("hidden");
+  } else {
+    warning.classList.remove("hidden");
+  }
+}
+
 function applyAddressShrink(el) {
   // Reset to default size first
   el.style.fontSize = "";
