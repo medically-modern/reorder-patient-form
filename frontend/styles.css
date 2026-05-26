@@ -227,7 +227,7 @@ h1, h2, h3, h4 {
 
 .panel-content {
   flex: 1;
-  padding: 1.25rem 1rem;
+  padding: 1.25rem 1.25rem;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -357,7 +357,13 @@ h1, h2, h3, h4 {
   flex-shrink: 0;
 }
 
-/* Confirm and Delay both use the same green selected style via .decision-small.selected */
+.decision-confirm.selected,
+.decision-delay.selected {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  box-shadow: 0 0 0 1px var(--primary);
+}
 
 .decision-buttons-small { flex-direction: row; }
 
@@ -536,12 +542,16 @@ input:disabled {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-light);
   cursor: pointer;
   font-size: 0.85rem;
   color: var(--text-secondary);
   min-height: 48px;
   -webkit-tap-highlight-color: transparent;
+  position: relative;
+  z-index: 1;
 }
 
 .opt-out-checkbox input[type="checkbox"] {
@@ -706,7 +716,7 @@ input:disabled {
   bottom: 0;
   background: var(--card-bg);
   border-top: 1px solid var(--border);
-  padding: 0.875rem 1rem;
+  padding: 0.875rem 1.25rem;
   padding-bottom: calc(0.875rem + env(safe-area-inset-bottom, 0px));
   box-shadow: 0 -2px 8px rgba(0,0,0,0.06);
   z-index: 10;
@@ -1078,9 +1088,9 @@ input:disabled {
 /* ─── Responsive ─── */
 
 @media (max-width: 480px) {
-  .panel-content { padding: 1rem 0.75rem; }
-  .step-indicator { padding: 0.75rem 0.75rem 0.5rem; }
-  .sticky-footer { padding: 0.75rem; padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)); }
+  .panel-content { padding: 1rem 1rem; }
+  .step-indicator { padding: 0.75rem 1rem 0.5rem; }
+  .sticky-footer { padding: 0.75rem 1rem; padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* ─── Accessibility: focus rings ─── */

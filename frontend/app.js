@@ -44,22 +44,8 @@ const state = {
 };
 
 // ─── Lock horizontal swipe on wizard ───
-
-(function lockHorizontalSwipe() {
-  let startX = 0, startY = 0;
-  document.addEventListener("touchstart", (e) => {
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
-  }, { passive: true });
-  document.addEventListener("touchmove", (e) => {
-    const dx = Math.abs(e.touches[0].clientX - startX);
-    const dy = Math.abs(e.touches[0].clientY - startY);
-    // If horizontal movement dominates, prevent it
-    if (dx > 10 && dx > dy * 1.5) {
-      e.preventDefault();
-    }
-  }, { passive: false });
-})();
+// CSS touch-action: pan-y on body/viewport handles this.
+// No JS touchmove handler needed — it interferes with natural vertical scrolling.
 
 // ─── Init ───
 
@@ -554,7 +540,6 @@ function stepQty(setNum, delta) {
   const key = `infQty${setNum}`;
   const otherKey = setNum === 1 ? 'infQty2' : 'infQty1';
   const combinedMax = getCombinedMaxQty();
-  const perSetMax = 2; // each set can be max 2 unless high-cap insurance
 
   let current = state[key] || 0;
   let other = state.hasSecondSet ? (state[otherKey] || 0) : 0;
@@ -562,20 +547,9 @@ function stepQty(setNum, delta) {
   let newVal = current + delta;
   newVal = Math.max(0, newVal);
 
-  if (isHighCapInsurance()) {
-    // Anthem Commercial / Horizon BCBS: total cap 9, individual set uncapped within that
-    newVal = Math.min(newVal, combinedMax - other);
-  } else {
-    // Standard: max 3 combined, each set max 2 (so 2+1 or 1+2)
-    newVal = Math.min(newVal, perSetMax);
-    if (state.hasSecondSet && newVal + other > combinedMax) {
-      newVal = combinedMax - other;
-    }
-    // Single set: cap at combinedMax
-    if (!state.hasSecondSet) {
-      newVal = Math.min(newVal, combinedMax);
-    }
-  }
+  // Always enforce combined max (set1 + set2 never exceeds combinedMax)
+  const roomLeft = combinedMax - other;
+  newVal = Math.min(newVal, roomLeft);
   newVal = Math.max(0, newVal);
 
   state[key] = newVal;
@@ -601,7 +575,6 @@ function getMaxQty() {
 
 function updateQtyButtons() {
   const combinedMax = getCombinedMaxQty();
-  const perSetMax = isHighCapInsurance() ? combinedMax : 2;
 
   [1, 2].forEach(setNum => {
     const el = document.getElementById(`inf-qty-${setNum}`);
@@ -611,12 +584,11 @@ function updateQtyButtons() {
     if (!row || row.classList.contains("hidden")) return;
 
     const otherVal = state.hasSecondSet ? (state[setNum === 1 ? 'infQty2' : 'infQty1'] || 0) : 0;
-    const remainingCap = combinedMax - otherVal;
-    const effectiveMax = Math.min(perSetMax, remainingCap);
+    const roomLeft = combinedMax - otherVal;
 
     const btns = row.querySelectorAll(".qty-btn");
     if (btns[0]) btns[0].disabled = val <= 0;
-    if (btns[1]) btns[1].disabled = val >= effectiveMax;
+    if (btns[1]) btns[1].disabled = val >= roomLeft;
   });
 }
 
