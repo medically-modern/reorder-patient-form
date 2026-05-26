@@ -294,6 +294,11 @@ async function getPatientData(uid) {
     infusionSet2: isServing(infusionSet2) ? infusionSet2 : null,
     infQty2: isServing(infusionSet2) ? col(COLUMNS.INF_QTY_2) : null,
 
+    // Benefits / Stedi (for OOP estimator)
+    deductibleRemaining: col(COLUMNS.DEDUCTIBLE_REMAINING),
+    stediCoinsurance: col(COLUMNS.STEDI_COINSURANCE),
+    oopMaxRemaining: col(COLUMNS.OOP_MAX_REMAINING),
+
     // Previous reorder response (if any)
     previousOrderResponse: col(COLUMNS.PATIENT_ORDER_RESPONSE),
     previousResponseTimestamp: col(COLUMNS.PATIENT_RESPONSE_TIMESTAMP),

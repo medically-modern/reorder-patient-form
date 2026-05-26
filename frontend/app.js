@@ -122,6 +122,9 @@ function renderForm() {
   const memberId = patientData.memberId1 || "";
   document.getElementById("ins-type-display").textContent = insType;
   document.getElementById("ins-member-display").textContent = maskMemberId(memberId);
+
+  // Render OOP estimate card
+  renderOopEstimate();
 }
 
 function renderOrderDetails() {
@@ -654,6 +657,261 @@ function attachAutocomplete() {
       addressCoords.lng = place.geometry.location.lng();
     }
   });
+}
+
+// ─── OOP Estimate Card ───
+
+/**
+ * Derive a "serving" string compatible with the OOP estimator from
+ * the reorder form's serving flags (which come from getPatientData).
+ */
+function deriveServing() {
+  if (!patientData) return "";
+  const hasCgm = patientData.servingSensors;
+  const hasPump = patientData.servingSupplies || patientData.servingInfusionSet1 || patientData.servingInfusionSet2;
+  if (hasCgm && hasPump) return "CGM & Pump & Supplies";
+  if (hasCgm) return "CGM";
+  if (hasPump) return "Pump & Supplies";
+  return "";
+}
+
+function deriveInfusionSets() {
+  if (!patientData) return 3;
+  const qty1 = parseInt(patientData.infQty1) || 0;
+  const qty2 = parseInt(patientData.infQty2) || 0;
+  const total = qty1 + qty2;
+  return total > 0 ? total : 3;
+}
+
+function fmt(n) {
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function fmtOrDash(n) {
+  return n !== null ? fmt(n) : "—";
+}
+
+/**
+ * Distribute deductible and coinsurance across line items proportionally
+ * by their allowed amount. Purely for display — totals stay identical.
+ */
+function distributePerLine(lines, est) {
+  var total = est.totalAllowed;
+
+  if (!est.canCalculateCosts) {
+    return lines.map(function (l) {
+      return { product: l.product, allowed: l.allowed, insurancePaid: null, deductible: null, coinsurance: null, patientOwes: null };
+    });
+  }
+
+  if (total === 0) {
+    return lines.map(function (l) {
+      return { product: l.product, allowed: l.allowed, insurancePaid: 0, deductible: 0, coinsurance: 0, patientOwes: 0 };
+    });
+  }
+
+  if (est.medicaidCovers) {
+    return lines.map(function (l) {
+      return { product: l.product, allowed: l.allowed, insurancePaid: l.allowed, deductible: 0, coinsurance: 0, patientOwes: 0 };
+    });
+  }
+
+  var oopScale = (est.patientOwesRaw || 0) > 0 ? (est.patientOwes || 0) / (est.patientOwesRaw || 1) : 1;
+  var result = [];
+  var runningDed = 0;
+  var runningCoins = 0;
+
+  for (var i = 0; i < lines.length; i++) {
+    var l = lines[i];
+    var proportion = l.allowed / total;
+    var isLast = i === lines.length - 1;
+
+    var lineDed;
+    if (isLast) {
+      lineDed = round2((est.appliedDeductible || 0) - runningDed);
+    } else {
+      lineDed = round2((est.appliedDeductible || 0) * proportion);
+      runningDed += lineDed;
+    }
+
+    var lineCoins;
+    if (isLast) {
+      lineCoins = round2((est.patientCoinsurance || 0) - runningCoins);
+    } else {
+      lineCoins = round2((est.patientCoinsurance || 0) * proportion);
+      runningCoins += lineCoins;
+    }
+
+    var linePatientOwes = round2((lineDed + lineCoins) * oopScale);
+    var lineInsPaid = round2(l.allowed - linePatientOwes);
+
+    result.push({
+      product: l.product,
+      allowed: l.allowed,
+      insurancePaid: Math.max(0, lineInsPaid),
+      deductible: lineDed,
+      coinsurance: lineCoins,
+      patientOwes: linePatientOwes,
+    });
+  }
+
+  return result;
+}
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
+var FIELD_WARNINGS = {
+  deductible: "Deductible remaining is missing — cannot calculate deductible portion",
+  coinsurance: "Coinsurance % is missing — cannot calculate co-ins/copay portion",
+  oopMax: "OOP max remaining is missing — patient total is not capped",
+};
+
+function renderOopEstimate() {
+  var container = document.getElementById("oop-estimate");
+  if (!container) return;
+
+  if (!patientData || !patientData.primaryInsurance) {
+    container.innerHTML = "";
+    return;
+  }
+
+  // CareCentrix check
+  var isCarecentrix = (patientData.referralSource || "").toLowerCase().includes("carecentrix");
+  if (isCarecentrix) {
+    container.innerHTML =
+      '<div class="oop-card">' +
+        '<p class="oop-label">OOP Estimate (Per Fill)</p>' +
+        '<p class="oop-carecentrix">Carecentrix patients have to contact carecentrix directly for their OOP costs.</p>' +
+      '</div>';
+    return;
+  }
+
+  var serving = deriveServing();
+  var infusionSets = deriveInfusionSets();
+
+  var result = estimateOop({
+    primaryInsurance: patientData.primaryInsurance,
+    secondaryInsurance: patientData.secondaryInsurance || "",
+    serving: serving,
+    infusionSets: infusionSets,
+    deductibleRemaining: patientData.deductibleRemaining || "",
+    stediCoinsurance: patientData.stediCoinsurance || "",
+    oopMaxRemaining: patientData.oopMaxRemaining || "",
+  });
+
+  if (!result || !result.ok) {
+    if (!serving) {
+      container.innerHTML = "";
+      return;
+    }
+    container.innerHTML =
+      '<div class="oop-card">' +
+        '<p class="oop-label">OOP Estimate (Per Fill)</p>' +
+        '<p class="oop-unable">' + escHtml(result && result.reason ? result.reason : "Unable to estimate") + '</p>' +
+      '</div>';
+    return;
+  }
+
+  var est = result;
+  var displayLines = distributePerLine(est.lines, est);
+  var hasMissing = est.missingFields.length > 0 && !est.medicaidCovers;
+  var costsUnknown = !est.canCalculateCosts && !est.medicaidCovers;
+
+  // Color classes
+  var patientOwesClass = est.patientOwes === null ? "muted"
+    : est.patientOwes === 0 ? "green"
+    : est.patientOwes > 500 ? "red" : "blue";
+
+  var headerOwesClass = costsUnknown ? "amber" : hasMissing ? "amber" : patientOwesClass;
+
+  // Build HTML
+  var html = '<div class="oop-card">';
+
+  // Header summary
+  html += '<div class="oop-header">';
+  html += '<p class="oop-label">OOP Estimate (Per Fill)</p>';
+  html += '<div class="oop-summary">';
+  html += '<div class="oop-summary-line">';
+  html += '<span>Allowed <strong>' + fmt(est.totalAllowed) + '</strong></span>';
+  html += '<span class="oop-sep">&minus;</span>';
+  html += '<span>Ins. paid <strong class="oop-' + (est.insurancePays !== null ? 'green' : 'muted') + '">' + fmtOrDash(est.insurancePays) + '</strong></span>';
+  html += '<span class="oop-sep">=</span>';
+  html += '<span class="oop-total">Patient owes <strong class="oop-' + headerOwesClass + '">' + fmtOrDash(est.patientOwes) + (hasMissing && est.patientOwes !== null ? ' *' : '') + '</strong></span>';
+  html += '</div>';
+
+  // Sub-detail line
+  if (est.canCalculateCosts && !est.medicaidCovers) {
+    var oopMaxHit = est.patientOwes !== null && est.patientOwesRaw !== null && est.patientOwes < est.patientOwesRaw;
+    var displayCoins = oopMaxHit
+      ? Math.max(0, est.patientOwes - est.appliedDeductible)
+      : est.patientCoinsurance;
+    html += '<p class="oop-subdetail">';
+    html += 'Ded. ' + fmt(est.appliedDeductible) + ' · Co-ins/Copay ' + fmt(displayCoins);
+    if (oopMaxHit) html += ' <span class="oop-amber oop-bold">OOP Max Hit</span>';
+    html += '</p>';
+  }
+  if (est.medicaidCovers) {
+    html += '<p class="oop-subdetail oop-green">' + escHtml(est.medicaidNote) + '</p>';
+  }
+
+  html += '</div></div>';
+
+  // Line items table
+  html += '<div class="oop-table-wrap"><table class="oop-table">';
+  html += '<thead><tr>';
+  html += '<th>Item</th><th class="r">Allowed</th><th class="r">Ins. Paid</th>';
+  html += '<th class="r">Deductible</th><th class="r">Co-ins / Copay</th><th class="r">Patient Owes</th>';
+  html += '</tr></thead><tbody>';
+
+  for (var i = 0; i < displayLines.length; i++) {
+    var line = displayLines[i];
+    html += '<tr>';
+    html += '<td class="oop-product">' + escHtml(line.product) + '</td>';
+    html += '<td class="r">' + fmt(line.allowed) + '</td>';
+    if (line.insurancePaid !== null) {
+      html += '<td class="r oop-green">' + fmt(line.insurancePaid) + '</td>';
+      html += '<td class="r">' + fmt(line.deductible) + '</td>';
+      html += '<td class="r">' + fmt(line.coinsurance) + '</td>';
+      html += '<td class="r oop-' + (hasMissing ? 'amber' : patientOwesClass) + ' oop-bold">' + fmt(line.patientOwes) + '</td>';
+    } else {
+      html += '<td class="r muted">—</td><td class="r muted">—</td><td class="r muted">—</td><td class="r muted">—</td>';
+    }
+    html += '</tr>';
+  }
+
+  html += '</tbody>';
+
+  // Totals row
+  html += '<tfoot><tr class="oop-totals">';
+  html += '<td class="oop-bold">Total</td>';
+  html += '<td class="r oop-bold">' + fmt(est.totalAllowed) + '</td>';
+  if (est.insurancePays !== null) {
+    html += '<td class="r oop-green oop-bold">' + fmt(est.insurancePays) + '</td>';
+    html += '<td class="r oop-bold">' + fmt(est.appliedDeductible) + '</td>';
+    html += '<td class="r oop-bold">' + fmt(est.patientCoinsurance) + '</td>';
+    html += '<td class="r oop-' + (hasMissing ? 'amber' : patientOwesClass) + ' oop-bold">' + fmt(est.patientOwes) + '</td>';
+  } else {
+    html += '<td class="r muted oop-bold">—</td><td class="r muted oop-bold">—</td><td class="r muted oop-bold">—</td><td class="r oop-amber oop-bold">—</td>';
+  }
+  html += '</tr></tfoot></table></div>';
+
+  // Missing field warnings
+  if (hasMissing) {
+    html += '<div class="oop-warnings">';
+    for (var j = 0; j < est.missingFields.length; j++) {
+      var field = est.missingFields[j];
+      html += '<p class="oop-warning">⚠ ' + escHtml(FIELD_WARNINGS[field] || field) + '</p>';
+    }
+    if (costsUnknown) {
+      html += '<p class="oop-warning oop-bold">Run Stedi eligibility to get accurate cost estimates</p>';
+    }
+    html += '</div>';
+  }
+
+  html += '</div>';
+  container.innerHTML = html;
 }
 
 // ─── Utility functions ───

@@ -65,6 +65,13 @@ const COLUMNS = {
   // Existing file columns
   CLINICALS_FILES:  "file_mkp0vm0a",                 // MN Docs / Clinicals files
 
+  // Benefits / Stedi eligibility (used by OOP estimator)
+  DEDUCTIBLE:             "text_mm3gbped",       // Text — total deductible (display only)
+  DEDUCTIBLE_REMAINING:   "text_mm3g32ja",       // Text — deductible remaining (used in OOP math)
+  STEDI_COINSURANCE:      "text_mm3gphed",       // Text — coinsurance % from Stedi (used in OOP math)
+  OOP_MAX:                "text_mm3gh0q3",       // Text — total OOP max (display only)
+  OOP_MAX_REMAINING:      "text_mm3gs345",       // Text — OOP max remaining (used in OOP math)
+
   // Portal notes
   PORTAL_NOTES:     "long_text_mm3evvzj",
 };
