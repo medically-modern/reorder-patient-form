@@ -80,13 +80,11 @@
 
             <p class="step-question">Does this still work?</p>
 
-            <div class="decision-buttons">
-              <button class="decision-btn decision-confirm" id="btn-confirm" onclick="selectOrderDecision('confirm')">
-                <span class="decision-icon">✓</span>
+            <div class="decision-buttons decision-buttons-small">
+              <button class="decision-btn decision-small decision-confirm" id="btn-confirm" onclick="selectOrderDecision('confirm')">
                 <span>Confirm</span>
               </button>
-              <button class="decision-btn decision-delay" id="btn-delay" onclick="selectOrderDecision('delay')">
-                <span class="decision-icon">⏸</span>
+              <button class="decision-btn decision-small decision-delay" id="btn-delay" onclick="selectOrderDecision('delay')">
                 <span>Delay</span>
               </button>
             </div>
@@ -94,11 +92,9 @@
             <!-- Delay date picker (inline, revealed on Delay tap) -->
             <div class="delay-picker hidden" id="delay-picker">
               <label class="field-label" for="delay-date-input">Pick a new ship date</label>
-              <p class="helper-text">Minimum: your current order date. Maximum: 8 weeks out.</p>
               <input type="date" id="delay-date-input" class="date-input">
               <div class="field-error hidden" id="delay-date-error"></div>
               <p class="delay-note hidden" id="delay-note-20">Because this date is less than 20 days away, you won't receive another confirmation text.</p>
-              <p class="delay-longer-note">Need to delay longer than 8 weeks or cancel? <strong>Text us</strong> and we'll take care of it.</p>
             </div>
 
             <!-- Continue button for Step 1 -->
@@ -157,18 +153,20 @@
                 <!-- Set 1 -->
                 <div class="infusion-set-row" id="infusion-row-1">
                   <div class="infusion-set-label" id="infusion-label-1"></div>
-                  <div class="infusion-dropdowns">
-                    <div class="field-group field-half">
-                      <label class="field-label" for="inf-type-1">Type</label>
-                      <select id="inf-type-1" class="native-select" onchange="handleInfTypeChange(1)"></select>
-                    </div>
-                    <div class="field-group field-half">
-                      <label class="field-label" for="inf-dim-1">Dimension</label>
-                      <select id="inf-dim-1" class="native-select"></select>
-                    </div>
+                  <div class="field-group">
+                    <label class="field-label" for="inf-brand-1">Type</label>
+                    <select id="inf-brand-1" class="native-select" onchange="handleInfBrandChange(1)"></select>
+                  </div>
+                  <div class="field-group">
+                    <label class="field-label" for="inf-size-1">Size</label>
+                    <select id="inf-size-1" class="native-select" onchange="handleInfSizeChange(1)"></select>
+                  </div>
+                  <div class="field-group">
+                    <label class="field-label" for="inf-tubing-1">Tubing Length</label>
+                    <select id="inf-tubing-1" class="native-select"></select>
                   </div>
                   <div class="qty-stepper-row">
-                    <span class="qty-label">Quantity</span>
+                    <span class="qty-label">Boxes</span>
                     <div class="qty-stepper">
                       <button class="qty-btn" onclick="stepQty(1, -1)">−</button>
                       <span class="qty-value" id="inf-qty-1">3</span>
@@ -183,18 +181,20 @@
                     <span>Set 2</span>
                     <button class="remove-set-btn" onclick="removeSecondSet()">✕ remove</button>
                   </div>
-                  <div class="infusion-dropdowns">
-                    <div class="field-group field-half">
-                      <label class="field-label" for="inf-type-2">Type</label>
-                      <select id="inf-type-2" class="native-select" onchange="handleInfTypeChange(2)"></select>
-                    </div>
-                    <div class="field-group field-half">
-                      <label class="field-label" for="inf-dim-2">Dimension</label>
-                      <select id="inf-dim-2" class="native-select"></select>
-                    </div>
+                  <div class="field-group">
+                    <label class="field-label" for="inf-brand-2">Type</label>
+                    <select id="inf-brand-2" class="native-select" onchange="handleInfBrandChange(2)"></select>
+                  </div>
+                  <div class="field-group">
+                    <label class="field-label" for="inf-size-2">Size</label>
+                    <select id="inf-size-2" class="native-select" onchange="handleInfSizeChange(2)"></select>
+                  </div>
+                  <div class="field-group">
+                    <label class="field-label" for="inf-tubing-2">Tubing Length</label>
+                    <select id="inf-tubing-2" class="native-select"></select>
                   </div>
                   <div class="qty-stepper-row">
-                    <span class="qty-label">Quantity</span>
+                    <span class="qty-label">Boxes</span>
                     <div class="qty-stepper">
                       <button class="qty-btn" onclick="stepQty(2, -1)">−</button>
                       <span class="qty-value" id="inf-qty-2">0</span>
@@ -205,11 +205,6 @@
 
                 <!-- Add second set link -->
                 <a class="add-set-link" id="add-set-link" onclick="addSecondSet()">+ Add a second infusion set</a>
-
-                <!-- Running total -->
-                <div class="infusion-total" id="infusion-total">
-                  Total: <strong id="infusion-total-value">3</strong> sets ordered
-                </div>
               </div>
               <label class="opt-out-checkbox">
                 <input type="checkbox" id="infusion-optout" onchange="toggleOptOut('infusion')">
@@ -253,14 +248,14 @@
               <p class="current-value address-text" id="current-address-display"></p>
             </div>
 
-            <p class="step-question">Has your address changed?</p>
+            <p class="step-question">Same address?</p>
 
             <div class="decision-buttons decision-buttons-small">
               <button class="decision-btn decision-small" id="btn-address-same" onclick="selectAddressChange(false)">
-                <span>Same as on file</span>
+                <span>Yes</span>
               </button>
               <button class="decision-btn decision-small" id="btn-address-new" onclick="selectAddressChange(true)">
-                <span>Yes, update it</span>
+                <span>No, change it</span>
               </button>
             </div>
 
@@ -268,7 +263,7 @@
               <div class="field-group">
                 <label class="field-label" for="address-input">New address</label>
                 <input type="text" id="address-input" placeholder="Start typing to search..." autocomplete="off">
-                <p class="helper-text">Start typing and select from the suggestions. ZIP code must be 5 digits.</p>
+                <p class="helper-text">Start typing and select your address from the dropdown.</p>
                 <div class="field-error hidden" id="address-error"></div>
               </div>
             </div>
@@ -291,14 +286,14 @@
               <p class="current-sub" id="ins-member-display"></p>
             </div>
 
-            <p class="step-question">Did your insurance change?</p>
+            <p class="step-question">Same insurance?</p>
 
             <div class="decision-buttons decision-buttons-small">
               <button class="decision-btn decision-small" id="btn-ins-same" onclick="selectInsuranceChange('no')">
-                <span>Same as on file</span>
+                <span>Yes</span>
               </button>
               <button class="decision-btn decision-small" id="btn-ins-new" onclick="selectInsuranceChange('yes')">
-                <span>Yes, I have new insurance</span>
+                <span>No, it's changed</span>
               </button>
             </div>
 

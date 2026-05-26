@@ -32,6 +32,7 @@ const state = {
   // Step 3
   addressChanged: false,
   newAddress: null,
+  addressSelectedFromGoogle: false,
   addressCoords: { lat: 0, lng: 0 },
 
   // Step 4
@@ -197,13 +198,13 @@ function renderOrderOptions() {
 
   // Infusion Sets
   const infSection = document.getElementById("section-infusion");
-  if (pd.servingInfusionSet1 && opts?.infusionSets?.length > 0) {
+  if (pd.servingInfusionSet1) {
     infSection.style.display = "";
 
-    // Populate type/dimension for set 1
+    // Populate brand/size/tubing for set 1
     populateInfusionDropdowns(1, pd.infusionSet1);
     state.infQty1 = pd.infQty1 || 3;
-    document.getElementById("inf-qty-1").textContent = state.infQty1;
+    document.getElementById("inf-qty-1").textContent = String(state.infQty1);
 
     // Set 2
     if (pd.servingInfusionSet2) {
@@ -213,39 +214,149 @@ function renderOrderOptions() {
       document.getElementById("infusion-label-1").innerHTML = "<span>Set 1</span>";
       populateInfusionDropdowns(2, pd.infusionSet2);
       state.infQty2 = pd.infQty2 || 0;
-      document.getElementById("inf-qty-2").textContent = state.infQty2;
+      document.getElementById("inf-qty-2").textContent = String(state.infQty2);
     }
 
-    updateInfusionTotal();
     updateQtyButtons();
   } else {
     infSection.style.display = "none";
   }
 }
 
-function populateInfusionDropdowns(setNum, currentValue) {
-  const opts = state.orderOptions;
-  if (!opts?.infusionSets?.length) return;
+// ─── Infusion Set Conditional Mapping ───
+// Maps brand → sizes → tubing lengths → Monday board status index
+// Each combo resolves to a single Monday column index for submission
+const INFUSION_MAP = {
+  "AutoSoft XC": {
+    "6 mm": { "5\"": 151, "23\"": 107, "32\"": 108, "43\"": 110 },
+    "9 mm": { "23\"": 153, "43\"": 16 },
+  },
+  "AutoSoft 90": {
+    "6 mm": { "23\"": 106, "43\"": 13 },
+    "9 mm": { "23\"": 4, "43\"": 15 },
+  },
+  "AutoSoft 30": {
+    "13 mm": { "23\"": 105, "43\"": 103 },
+  },
+  "TruSteel": {
+    "6 mm": { "23\"": 154, "32\"": 155 },
+    "8 mm": { "23\"": 3, "32\"": 18 },
+  },
+  "VariSoft": {
+    "13 mm": { "23\"": 109, "32\"": 12 },
+    "17 mm": { "23\"": 1 },
+  },
+  "Contact": {
+    "6 mm": { "23\"": 19 },
+  },
+  "Inset": {
+    "6 mm": { "23\"": 101 },
+  },
+  "Luer": {
+    "6 mm": { "32\"": 102 },
+  },
+  "Mio Advance Clear": {
+    "9 mm": { "23\"": 152 },
+  },
+};
 
-  const typeSelect = document.getElementById(`inf-type-${setNum}`);
-  const dimSelect = document.getElementById(`inf-dim-${setNum}`);
-
-  // Extract unique types from the infusion set labels
-  // Labels are like "Autosoft XC 6mm / 23in" — type is first part, dimension is last part
-  const allLabels = opts.infusionSets.map(o => o.label);
-
-  // For now, populate the type dropdown with all infusion set labels
-  // (the spec says type + dimension cascading, but existing data has combined labels)
-  typeSelect.innerHTML = allLabels
-    .map(label => `<option value="${escAttr(label)}" ${label.toLowerCase() === (currentValue || "").toLowerCase() ? "selected" : ""}>${escHtml(label)}</option>`)
-    .join("");
-
-  // Dimension dropdown: hidden for now since combined labels
-  dimSelect.parentElement.style.display = "none";
+// Reverse lookup: Monday index → { brand, size, tubing }
+const INFUSION_REVERSE = {};
+for (const [brand, sizes] of Object.entries(INFUSION_MAP)) {
+  for (const [size, tubings] of Object.entries(sizes)) {
+    for (const [tubing, idx] of Object.entries(tubings)) {
+      INFUSION_REVERSE[idx] = { brand, size, tubing };
+    }
+  }
 }
 
-function handleInfTypeChange(setNum) {
-  // If we implement cascading dropdowns later, handle here
+// Also map label strings to their index for reverse lookup from label text
+function parseInfusionLabel(label) {
+  if (!label) return null;
+  const clean = label.replace(/[  ]+/g, ' ').trim();
+  for (const [brand, sizes] of Object.entries(INFUSION_MAP)) {
+    for (const [size, tubings] of Object.entries(sizes)) {
+      for (const [tubing, idx] of Object.entries(tubings)) {
+        const pattern = `${brand} ${size.replace(' ', '')} ${tubing.replace('"', '"')}`;
+        const normalized = clean.replace(/\s+/g, ' ');
+        if (normalized.includes(brand) && normalized.includes(size.replace(' mm', 'mm')) && normalized.includes(tubing.replace('"', '"'))) {
+          return { brand, size, tubing, index: idx };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function populateInfusionDropdowns(setNum, currentValue) {
+  const brandSelect = document.getElementById(`inf-brand-${setNum}`);
+  const sizeSelect = document.getElementById(`inf-size-${setNum}`);
+  const tubingSelect = document.getElementById(`inf-tubing-${setNum}`);
+  if (!brandSelect || !sizeSelect || !tubingSelect) return;
+
+  // Populate brand dropdown
+  const brands = Object.keys(INFUSION_MAP);
+  brandSelect.innerHTML = brands.map(b => `<option value="${escAttr(b)}">${escHtml(b)}</option>`).join("");
+
+  // Try to match current value
+  const parsed = parseInfusionLabel(currentValue);
+  if (parsed) {
+    brandSelect.value = parsed.brand;
+    populateSizeDropdown(setNum, parsed.brand, parsed.size);
+    populateTubingDropdown(setNum, parsed.brand, parsed.size, parsed.tubing);
+  } else if (brands.length > 0) {
+    populateSizeDropdown(setNum, brands[0]);
+    const firstSize = Object.keys(INFUSION_MAP[brands[0]])[0];
+    populateTubingDropdown(setNum, brands[0], firstSize);
+  }
+}
+
+function populateSizeDropdown(setNum, brand, selectValue) {
+  const sizeSelect = document.getElementById(`inf-size-${setNum}`);
+  const sizes = Object.keys(INFUSION_MAP[brand] || {});
+  sizeSelect.innerHTML = sizes.map(s => `<option value="${escAttr(s)}">${escHtml(s)}</option>`).join("");
+  if (selectValue && sizes.includes(selectValue)) {
+    sizeSelect.value = selectValue;
+  }
+}
+
+function populateTubingDropdown(setNum, brand, size, selectValue) {
+  const tubingSelect = document.getElementById(`inf-tubing-${setNum}`);
+  const tubings = Object.keys((INFUSION_MAP[brand] || {})[size] || {});
+  tubingSelect.innerHTML = tubings.map(t => `<option value="${escAttr(t)}">${escHtml(t)}</option>`).join("");
+  if (selectValue && tubings.includes(selectValue)) {
+    tubingSelect.value = selectValue;
+  }
+}
+
+function handleInfBrandChange(setNum) {
+  const brand = document.getElementById(`inf-brand-${setNum}`).value;
+  populateSizeDropdown(setNum, brand);
+  const firstSize = Object.keys(INFUSION_MAP[brand] || {})[0];
+  populateTubingDropdown(setNum, brand, firstSize);
+}
+
+function handleInfSizeChange(setNum) {
+  const brand = document.getElementById(`inf-brand-${setNum}`).value;
+  const size = document.getElementById(`inf-size-${setNum}`).value;
+  populateTubingDropdown(setNum, brand, size);
+}
+
+// Get the resolved Monday label for a set's current dropdown state
+function getInfusionLabel(setNum) {
+  const brand = document.getElementById(`inf-brand-${setNum}`)?.value;
+  const size = document.getElementById(`inf-size-${setNum}`)?.value;
+  const tubing = document.getElementById(`inf-tubing-${setNum}`)?.value;
+  if (!brand || !size || !tubing) return "";
+  return `${brand} ${size} ${tubing}`;
+}
+
+// Get the Monday status index for a set's current state
+function getInfusionIndex(setNum) {
+  const brand = document.getElementById(`inf-brand-${setNum}`)?.value;
+  const size = document.getElementById(`inf-size-${setNum}`)?.value;
+  const tubing = document.getElementById(`inf-tubing-${setNum}`)?.value;
+  return ((INFUSION_MAP[brand] || {})[size] || {})[tubing] || null;
 }
 
 // ─── Wizard Navigation ───
@@ -261,9 +372,14 @@ function goToStep(step) {
 
   updateStepIndicator();
 
+  // Scroll to top so the new panel content is visible
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  const panel = document.getElementById(`panel-${step}`);
+  const panelContent = panel?.querySelector(".panel-content");
+  if (panelContent) panelContent.scrollTop = 0;
+
   // Focus first interactive element in new panel
   setTimeout(() => {
-    const panel = document.getElementById(`panel-${step}`);
     const focusable = panel.querySelector("button, input, select, [tabindex]");
     if (focusable) focusable.focus({ preventScroll: true });
   }, 260);
@@ -435,44 +551,73 @@ function checkEmptyState() {
 }
 
 function stepQty(setNum, delta) {
-  const max = getMaxQty();
   const key = `infQty${setNum}`;
-  let newVal = state[key] + delta;
-  newVal = Math.max(0, Math.min(max, newVal));
+  const otherKey = setNum === 1 ? 'infQty2' : 'infQty1';
+  const combinedMax = getCombinedMaxQty();
+  const perSetMax = 2; // each set can be max 2 unless high-cap insurance
+
+  let current = state[key] || 0;
+  let other = state.hasSecondSet ? (state[otherKey] || 0) : 0;
+
+  let newVal = current + delta;
+  newVal = Math.max(0, newVal);
+
+  if (isHighCapInsurance()) {
+    // Anthem Commercial / Horizon BCBS: total cap 9, individual set uncapped within that
+    newVal = Math.min(newVal, combinedMax - other);
+  } else {
+    // Standard: max 3 combined, each set max 2 (so 2+1 or 1+2)
+    newVal = Math.min(newVal, perSetMax);
+    if (state.hasSecondSet && newVal + other > combinedMax) {
+      newVal = combinedMax - other;
+    }
+    // Single set: cap at combinedMax
+    if (!state.hasSecondSet) {
+      newVal = Math.min(newVal, combinedMax);
+    }
+  }
+  newVal = Math.max(0, newVal);
+
   state[key] = newVal;
-  document.getElementById(`inf-qty-${setNum}`).textContent = newVal;
+  document.getElementById(`inf-qty-${setNum}`).textContent = String(newVal);
   updateQtyButtons();
-  updateInfusionTotal();
   updateOopFooter();
 }
 
-function getMaxQty() {
+function isHighCapInsurance() {
   const ins = (state.patientData?.primaryInsurance || "").toLowerCase();
-  // Anthem/CareCentrix = 9, everything else = 3
-  if (ins.includes("anthem") || ins.includes("carecentrix")) return 9;
-  return 3;
+  return ins.includes("anthem") && ins.includes("commercial") ||
+         ins.includes("horizon") && ins.includes("bcbs");
+}
+
+function getCombinedMaxQty() {
+  return isHighCapInsurance() ? 9 : 3;
+}
+
+function getMaxQty() {
+  // Keep for backward compat (buildSubmission uses this)
+  return getCombinedMaxQty();
 }
 
 function updateQtyButtons() {
-  const max = getMaxQty();
-  // Note: individual set can go 0-max; total isn't constrained in UI per spec
+  const combinedMax = getCombinedMaxQty();
+  const perSetMax = isHighCapInsurance() ? combinedMax : 2;
+
   [1, 2].forEach(setNum => {
     const el = document.getElementById(`inf-qty-${setNum}`);
     if (!el) return;
-    const val = state[`infQty${setNum}`];
+    const val = state[`infQty${setNum}`] || 0;
     const row = document.getElementById(`infusion-row-${setNum}`);
     if (!row || row.classList.contains("hidden")) return;
 
+    const otherVal = state.hasSecondSet ? (state[setNum === 1 ? 'infQty2' : 'infQty1'] || 0) : 0;
+    const remainingCap = combinedMax - otherVal;
+    const effectiveMax = Math.min(perSetMax, remainingCap);
+
     const btns = row.querySelectorAll(".qty-btn");
     if (btns[0]) btns[0].disabled = val <= 0;
-    if (btns[1]) btns[1].disabled = val >= max;
+    if (btns[1]) btns[1].disabled = val >= effectiveMax;
   });
-}
-
-function updateInfusionTotal() {
-  const total = state.infQty1 + (state.hasSecondSet ? state.infQty2 : 0);
-  const el = document.getElementById("infusion-total-value");
-  if (el) el.textContent = total;
 }
 
 function addSecondSet() {
@@ -486,7 +631,6 @@ function addSecondSet() {
   // Populate set 2 dropdowns
   populateInfusionDropdowns(2, "");
   updateQtyButtons();
-  updateInfusionTotal();
 }
 
 function removeSecondSet() {
@@ -495,7 +639,7 @@ function removeSecondSet() {
   document.getElementById("infusion-row-2").classList.add("hidden");
   document.getElementById("add-set-link").classList.remove("hidden");
   document.getElementById("infusion-label-1").innerHTML = "";
-  updateInfusionTotal();
+  updateQtyButtons();
   updateOopFooter();
 }
 
@@ -513,6 +657,7 @@ function selectAddressChange(changed) {
   } else {
     editSection.classList.add("hidden");
     state.newAddress = null;
+    state.addressSelectedFromGoogle = false;
   }
 }
 
@@ -621,9 +766,8 @@ function validateCurrentStep() {
         showFieldError("address-error", "Please enter your new address.");
         return false;
       }
-      const zipMatch = addr.match(/\b(\d{5})\b/);
-      if (!zipMatch) {
-        showFieldError("address-error", "Address must include a valid 5-digit ZIP code.");
+      if (!state.addressSelectedFromGoogle) {
+        showFieldError("address-error", "Please select your address from the dropdown suggestions.");
         return false;
       }
       state.newAddress = addr;
@@ -686,16 +830,18 @@ function renderReview() {
   }
 
   if (!state.infusionOptOut && (pd.servingInfusionSet1 || pd.servingInfusionSet2)) {
-    // Check qty changes
+    // Check qty or type changes
     const origQty1 = pd.infQty1 || 0;
     const origQty2 = pd.infQty2 || 0;
-    if (state.infQty1 !== origQty1 || (state.hasSecondSet && state.infQty2 !== origQty2)) {
+    const newType1 = getInfusionLabel(1) || pd.infusionSet1;
+    const newType2 = state.hasSecondSet ? (getInfusionLabel(2) || "") : "";
+    const typeChanged1 = newType1.toLowerCase() !== (pd.infusionSet1 || "").toLowerCase();
+    const typeChanged2 = state.hasSecondSet && newType2.toLowerCase() !== (pd.infusionSet2 || "").toLowerCase();
+    if (state.infQty1 !== origQty1 || (state.hasSecondSet && state.infQty2 !== origQty2) || typeChanged1 || typeChanged2) {
       hasChanges = true;
       const origDesc = `${pd.infusionSet1 || "Set 1"} (${origQty1})` + (origQty2 > 0 ? ` + ${pd.infusionSet2 || "Set 2"} (${origQty2})` : "");
-      const newType1 = document.getElementById("inf-type-1")?.value || pd.infusionSet1;
       let newDesc = `${newType1} (${state.infQty1})`;
       if (state.hasSecondSet && state.infQty2 > 0) {
-        const newType2 = document.getElementById("inf-type-2")?.value || "";
         newDesc += ` + ${newType2} (${state.infQty2})`;
       }
       html += reviewItem("Infusion sets", origDesc, newDesc);
@@ -884,16 +1030,19 @@ function buildSubmission() {
       orderChanges.infQty1 = 0;
       orderChanges.infusionOptOut = true;
     } else {
-      orderChanges.infusionSet1 = document.getElementById("inf-type-1")?.value || null;
+      orderChanges.infusionSet1 = getInfusionLabel(1) || null;
+      orderChanges.infusionSet1Index = getInfusionIndex(1);
       orderChanges.infQty1 = state.infQty1;
     }
   }
 
   if (state.hasSecondSet && !state.infusionOptOut) {
-    orderChanges.infusionSet2 = document.getElementById("inf-type-2")?.value || null;
+    orderChanges.infusionSet2 = getInfusionLabel(2) || null;
+    orderChanges.infusionSet2Index = getInfusionIndex(2);
     orderChanges.infQty2 = state.infQty2;
   } else if (pd.servingInfusionSet2 && !state.infusionOptOut) {
-    orderChanges.infusionSet2 = document.getElementById("inf-type-2")?.value || pd.infusionSet2;
+    orderChanges.infusionSet2 = getInfusionLabel(2) || pd.infusionSet2;
+    orderChanges.infusionSet2Index = getInfusionIndex(2);
     orderChanges.infQty2 = state.infQty2;
   }
 
@@ -952,6 +1101,11 @@ function attachAutocomplete() {
   const input = document.getElementById("address-input");
   if (!input || !window.google?.maps?.places?.Autocomplete) return;
 
+  // Reset selection flag when user manually types
+  input.addEventListener("input", () => {
+    state.addressSelectedFromGoogle = false;
+  });
+
   const autocomplete = new google.maps.places.Autocomplete(input, {
     componentRestrictions: { country: "us" },
     types: ["address"],
@@ -965,6 +1119,7 @@ function attachAutocomplete() {
     // Strip +4 ZIP
     input.value = place.formatted_address.replace(/(\b\d{5})-\d{4}\b/g, "$1");
     state.newAddress = input.value;
+    state.addressSelectedFromGoogle = true;
 
     if (place.geometry?.location) {
       state.addressCoords.lat = place.geometry.location.lat();

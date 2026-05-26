@@ -248,8 +248,8 @@ h1, h2, h3, h4 {
 /* ─── Shipping note (animated red callout) ─── */
 
 @keyframes shippingPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.35); }
-  50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(214, 158, 46, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(214, 158, 46, 0); }
 }
 
 @keyframes shippingFadeIn {
@@ -258,12 +258,12 @@ h1, h2, h3, h4 {
 }
 
 .shipping-note {
-  background: #FEF2F2;
-  border: 2px solid #F87171;
+  background: #FFFBEB;
+  border: 2px solid #F6E05E;
   border-radius: var(--radius-sm);
   padding: 0.75rem 1rem;
   font-size: 0.9rem;
-  color: #B91C1C;
+  color: #92400E;
   margin-bottom: 1.25rem;
   line-height: 1.5;
   font-weight: 600;
@@ -277,7 +277,7 @@ h1, h2, h3, h4 {
 }
 
 .shipping-note strong {
-  color: #991B1B;
+  color: #78350F;
   font-weight: 700;
 }
 
@@ -357,19 +357,7 @@ h1, h2, h3, h4 {
   flex-shrink: 0;
 }
 
-.decision-confirm.selected {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: white;
-  box-shadow: 0 2px 8px rgba(11,110,79,0.25);
-}
-
-.decision-delay.selected {
-  border-color: var(--primary);
-  background: var(--primary-light);
-  color: var(--primary-dark);
-  box-shadow: 0 0 0 1px var(--primary);
-}
+/* Confirm and Delay both use the same green selected style via .decision-small.selected */
 
 .decision-buttons-small { flex-direction: row; }
 
