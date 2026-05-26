@@ -698,6 +698,52 @@ input[type="date"] {
   margin-top: 0.75rem;
 }
 
+/* ─── Simple 3-value patient view ─── */
+
+.oop-simple {
+  margin-top: 0.25rem;
+}
+
+.oop-simple-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+}
+
+.oop-simple-row:last-of-type {
+  border-bottom: none;
+}
+
+.oop-simple-main {
+  padding-top: 0.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.oop-simple-main .oop-simple-value {
+  font-size: 1.375rem;
+}
+
+.oop-simple-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+}
+
+.oop-simple-note {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin: 0.5rem 0 0 0;
+  padding: 0;
+}
+
 .oop-label {
   font-size: 10px;
   text-transform: uppercase;

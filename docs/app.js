@@ -832,7 +832,59 @@ function renderOopEstimate() {
   // Red disclaimer banner
   html += '<div class="oop-disclaimer">This is an estimate of your out of pocket expenses, your bill may vary from this estimate.</div>';
 
-  // Header summary (always visible)
+  // ─── Simple 3-value display (patient-facing) ───
+  if (est.canCalculateCosts && !est.medicaidCovers) {
+    var oopMaxHit = est.patientOwes !== null && est.patientOwesRaw !== null && est.patientOwes < est.patientOwesRaw;
+    var displayCoins = oopMaxHit
+      ? Math.max(0, est.patientOwes - est.appliedDeductible)
+      : est.patientCoinsurance;
+
+    html += '<p class="oop-label">Estimated Cost Per Fill</p>';
+    html += '<div class="oop-simple">';
+    html += '<div class="oop-simple-row oop-simple-main">';
+    html += '<span>Estimated Patient Responsibility</span>';
+    html += '<span class="oop-simple-value oop-' + patientOwesClass + '">' + fmtOrDash(est.patientOwes) + '</span>';
+    html += '</div>';
+    html += '<div class="oop-simple-row">';
+    html += '<span>Deductible Applied</span>';
+    html += '<span class="oop-simple-value">' + fmt(est.appliedDeductible) + '</span>';
+    html += '</div>';
+    html += '<div class="oop-simple-row">';
+    html += '<span>Co-insurance / Copay</span>';
+    html += '<span class="oop-simple-value">' + fmt(displayCoins) + '</span>';
+    html += '</div>';
+    if (oopMaxHit) {
+      html += '<p class="oop-simple-note oop-amber">Your out-of-pocket maximum has been reached — your costs are capped.</p>';
+    }
+    html += '</div>';
+  } else if (est.medicaidCovers) {
+    html += '<p class="oop-label">Estimated Cost Per Fill</p>';
+    html += '<div class="oop-simple">';
+    html += '<div class="oop-simple-row oop-simple-main">';
+    html += '<span>Estimated Patient Responsibility</span>';
+    html += '<span class="oop-simple-value oop-green">$0.00</span>';
+    html += '</div>';
+    html += '<p class="oop-simple-note oop-green">' + escHtml(est.medicaidNote) + '</p>';
+    html += '</div>';
+  } else {
+    // Missing data — can't calculate
+    html += '<p class="oop-label">Estimated Cost Per Fill</p>';
+    html += '<div class="oop-simple">';
+    html += '<div class="oop-simple-row oop-simple-main">';
+    html += '<span>Estimated Patient Responsibility</span>';
+    html += '<span class="oop-simple-value oop-muted">—</span>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  // ─── Full detail view (hidden, preserved for future use) ───
+  // To re-enable: remove style="display:none" from oop-full-detail
+  // and uncomment the toggle button below.
+  // html += '<button class="oop-toggle" onclick="toggleOopDetails()" id="oop-toggle-btn">View detailed breakdown ▾</button>';
+
+  html += '<div class="oop-full-detail" id="oop-details" style="display:none;">';
+
+  // Old header summary
   html += '<div class="oop-header">';
   html += '<p class="oop-label">OOP Estimate (Per Fill)</p>';
   html += '<div class="oop-summary">';
@@ -843,29 +895,7 @@ function renderOopEstimate() {
   html += '<span class="oop-sep">=</span>';
   html += '<span class="oop-total">Patient owes <strong class="oop-' + headerOwesClass + '">' + fmtOrDash(est.patientOwes) + (hasMissing && est.patientOwes !== null ? ' *' : '') + '</strong></span>';
   html += '</div>';
-
-  // Sub-detail line
-  if (est.canCalculateCosts && !est.medicaidCovers) {
-    var oopMaxHit = est.patientOwes !== null && est.patientOwesRaw !== null && est.patientOwes < est.patientOwesRaw;
-    var displayCoins = oopMaxHit
-      ? Math.max(0, est.patientOwes - est.appliedDeductible)
-      : est.patientCoinsurance;
-    html += '<p class="oop-subdetail">';
-    html += 'Ded. ' + fmt(est.appliedDeductible) + ' · Co-ins/Copay ' + fmt(displayCoins);
-    if (oopMaxHit) html += ' <span class="oop-amber oop-bold">OOP Max Hit</span>';
-    html += '</p>';
-  }
-  if (est.medicaidCovers) {
-    html += '<p class="oop-subdetail oop-green">' + escHtml(est.medicaidNote) + '</p>';
-  }
-
   html += '</div></div>';
-
-  // Collapsible toggle
-  html += '<button class="oop-toggle" onclick="toggleOopDetails()" id="oop-toggle-btn">View detailed breakdown ▾</button>';
-
-  // Collapsible detail section (hidden by default)
-  html += '<div class="oop-details" id="oop-details" style="display:none;">';
 
   // Line items table
   html += '<div class="oop-table-wrap"><table class="oop-table">';
