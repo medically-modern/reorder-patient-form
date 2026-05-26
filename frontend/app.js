@@ -139,7 +139,7 @@ function renderWizard() {
   const addressEl = document.getElementById("current-address-display");
   const addrText = pd.address || "No address on file";
   addressEl.textContent = addrText;
-  applyAddressShrink(addressEl, addrText);
+  applyAddressShrink(addressEl);
 
   // Step 4: Insurance
   const insType = pd.primaryInsurance || "Unknown";
@@ -189,7 +189,7 @@ function renderOrderOptions() {
 
     // Populate brand/size/tubing for set 1
     populateInfusionDropdowns(1, pd.infusionSet1);
-    state.infQty1 = pd.infQty1 || 3;
+    state.infQty1 = parseInt(pd.infQty1, 10) || 3;
     document.getElementById("inf-qty-1").textContent = String(state.infQty1);
 
     // Set 2
@@ -199,7 +199,7 @@ function renderOrderOptions() {
       document.getElementById("add-set-link").classList.add("hidden");
       document.getElementById("infusion-label-1").innerHTML = "<span>Set 1</span>";
       populateInfusionDropdowns(2, pd.infusionSet2);
-      state.infQty2 = pd.infQty2 || 0;
+      state.infQty2 = parseInt(pd.infQty2, 10) || 0;
       document.getElementById("inf-qty-2").textContent = String(state.infQty2);
     }
 
@@ -233,16 +233,16 @@ const INFUSION_MAP = {
     "17 mm": { "23\"": 1 },
   },
   "Contact": {
-    "6 mm": { "23\"": 19 },
+    "6mm": { "23\"": 19 },
   },
   "Inset": {
-    "6 mm": { "23\"": 101 },
+    "6mm": { "23\"": 101 },
   },
   "Luer": {
-    "6 mm": { "32\"": 102 },
+    "6mm": { "32\"": 102 },
   },
   "Mio Advance Clear": {
-    "9 mm": { "23\"": 152 },
+    "9mm": { "23\"": 152 },
   },
 };
 
@@ -259,13 +259,14 @@ for (const [brand, sizes] of Object.entries(INFUSION_MAP)) {
 // Also map label strings to their index for reverse lookup from label text
 function parseInfusionLabel(label) {
   if (!label) return null;
-  const clean = label.replace(/[  ]+/g, ' ').trim();
+  // Collapse all whitespace (including narrow no-break space) and lowercase
+  const normalized = label.replace(/[\s  ]+/g, ' ').trim().toLowerCase();
   for (const [brand, sizes] of Object.entries(INFUSION_MAP)) {
     for (const [size, tubings] of Object.entries(sizes)) {
       for (const [tubing, idx] of Object.entries(tubings)) {
-        const pattern = `${brand} ${size.replace(' ', '')} ${tubing.replace('"', '"')}`;
-        const normalized = clean.replace(/\s+/g, ' ');
-        if (normalized.includes(brand) && normalized.includes(size.replace(' mm', 'mm')) && normalized.includes(tubing.replace('"', '"'))) {
+        // Build the expected label from map keys and normalize the same way
+        const expected = `${brand} ${size} ${tubing}`.replace(/[\s  ]+/g, ' ').trim().toLowerCase();
+        if (normalized === expected) {
           return { brand, size, tubing, index: idx };
         }
       }
@@ -541,8 +542,8 @@ function stepQty(setNum, delta) {
   const otherKey = setNum === 1 ? 'infQty2' : 'infQty1';
   const combinedMax = getCombinedMaxQty();
 
-  let current = state[key] || 0;
-  let other = state.hasSecondSet ? (state[otherKey] || 0) : 0;
+  let current = parseInt(state[key], 10) || 0;
+  let other = state.hasSecondSet ? (parseInt(state[otherKey], 10) || 0) : 0;
 
   let newVal = current + delta;
   newVal = Math.max(0, newVal);
@@ -579,11 +580,11 @@ function updateQtyButtons() {
   [1, 2].forEach(setNum => {
     const el = document.getElementById(`inf-qty-${setNum}`);
     if (!el) return;
-    const val = state[`infQty${setNum}`] || 0;
+    const val = parseInt(state[`infQty${setNum}`], 10) || 0;
     const row = document.getElementById(`infusion-row-${setNum}`);
     if (!row || row.classList.contains("hidden")) return;
 
-    const otherVal = state.hasSecondSet ? (state[setNum === 1 ? 'infQty2' : 'infQty1'] || 0) : 0;
+    const otherVal = state.hasSecondSet ? (parseInt(state[setNum === 1 ? 'infQty2' : 'infQty1'], 10) || 0) : 0;
     const roomLeft = combinedMax - otherVal;
 
     const btns = row.querySelectorAll(".qty-btn");
@@ -851,12 +852,12 @@ function renderReview() {
 }
 
 function reviewItem(label, before, after, isAddress) {
-  const shrinkClass = isAddress ? ` address-text${after.length > 60 ? ' address-xlong' : after.length > 40 ? ' address-long' : ''}` : '';
+  const addrStyle = isAddress ? ' style="word-break:break-word;overflow-wrap:break-word;"' : '';
   return `<div class="review-item">
     <div class="review-item-label">${escHtml(label)}</div>
-    <div class="review-item-before${shrinkClass}">${escHtml(before)}</div>
+    <div class="review-item-before"${addrStyle}>${escHtml(before)}</div>
     <div class="review-item-arrow">→</div>
-    <div class="review-item-after${shrinkClass}">${escHtml(after)}</div>
+    <div class="review-item-after"${addrStyle}>${escHtml(after)}</div>
   </div>`;
 }
 
@@ -1123,13 +1124,24 @@ function maskMemberId(id) {
 }
 
 // ─── Address shrink for long text ───
-function applyAddressShrink(el, text) {
-  el.classList.remove("address-long", "address-xlong");
-  if (text.length > 60) {
-    el.classList.add("address-xlong");
-  } else if (text.length > 40) {
-    el.classList.add("address-long");
-  }
+function applyAddressShrink(el) {
+  // Reset to default size first
+  el.style.fontSize = "";
+  // Wait for render, then check if text overflows
+  requestAnimationFrame(() => {
+    const parent = el.parentElement;
+    if (!parent) return;
+    const maxWidth = parent.clientWidth - 32; // account for padding
+    let fontSize = 16; // start at 1rem (16px)
+    const minFontSize = 11;
+    el.style.fontSize = fontSize + "px";
+    while (el.scrollWidth > maxWidth && fontSize > minFontSize) {
+      fontSize -= 0.5;
+      el.style.fontSize = fontSize + "px";
+    }
+    el.style.wordBreak = "break-word";
+    el.style.overflowWrap = "break-word";
+  });
 }
 
 function simplifyInsurance(raw) {

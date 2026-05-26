@@ -781,6 +781,8 @@ input:disabled {
   font-size: 1rem;
   font-weight: 600;
   color: var(--primary-dark);
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .current-sub {
