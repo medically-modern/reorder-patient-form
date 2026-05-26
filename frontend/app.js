@@ -829,7 +829,10 @@ function renderOopEstimate() {
   // Build HTML
   var html = '<div class="oop-card">';
 
-  // Header summary
+  // Red disclaimer banner
+  html += '<div class="oop-disclaimer">This is an estimate of your out of pocket expenses, your bill may vary from this estimate.</div>';
+
+  // Header summary (always visible)
   html += '<div class="oop-header">';
   html += '<p class="oop-label">OOP Estimate (Per Fill)</p>';
   html += '<div class="oop-summary">';
@@ -857,6 +860,12 @@ function renderOopEstimate() {
   }
 
   html += '</div></div>';
+
+  // Collapsible toggle
+  html += '<button class="oop-toggle" onclick="toggleOopDetails()" id="oop-toggle-btn">View detailed breakdown ▾</button>';
+
+  // Collapsible detail section (hidden by default)
+  html += '<div class="oop-details" id="oop-details" style="display:none;">';
 
   // Line items table
   html += '<div class="oop-table-wrap"><table class="oop-table">';
@@ -910,8 +919,22 @@ function renderOopEstimate() {
     html += '</div>';
   }
 
-  html += '</div>';
+  html += '</div>'; // close oop-details
+  html += '</div>'; // close oop-card
   container.innerHTML = html;
+}
+
+function toggleOopDetails() {
+  var details = document.getElementById("oop-details");
+  var btn = document.getElementById("oop-toggle-btn");
+  if (!details || !btn) return;
+  if (details.style.display === "none") {
+    details.style.display = "block";
+    btn.textContent = "Hide detailed breakdown ▴";
+  } else {
+    details.style.display = "none";
+    btn.textContent = "View detailed breakdown ▾";
+  }
 }
 
 // ─── Utility functions ───

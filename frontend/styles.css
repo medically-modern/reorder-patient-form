@@ -661,6 +661,43 @@ input[type="date"] {
   box-shadow: var(--shadow);
 }
 
+.oop-disclaimer {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: var(--radius-sm);
+  color: #DC2626;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.625rem 0.75rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.4;
+}
+
+.oop-toggle {
+  display: block;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: center;
+  margin-top: 0.5rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.oop-toggle:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.oop-details {
+  margin-top: 0.75rem;
+}
+
 .oop-label {
   font-size: 10px;
   text-transform: uppercase;
