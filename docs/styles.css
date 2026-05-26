@@ -111,7 +111,7 @@ h1, h2, h3, h4 {
   top: 0;
   z-index: 50;
   background: var(--card-bg);
-  padding: 0.75rem 1.25rem 0.5rem;
+  padding: 0.75rem 1rem 0.5rem;
   padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
   height: auto;
   min-height: 56px;
@@ -125,8 +125,8 @@ h1, h2, h3, h4 {
 .step-track {
   position: absolute;
   top: 50%;
-  left: 2.5rem;
-  right: 2.5rem;
+  left: 2rem;
+  right: 2rem;
   height: 2px;
   background: var(--border);
   transform: translateY(-8px);
@@ -188,11 +188,11 @@ h1, h2, h3, h4 {
 }
 
 .step-labels span {
-  font-size: 0.6875rem;
+  font-size: 0.6rem;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  width: 28px;
+  letter-spacing: 0.02em;
+  flex: 1;
   text-align: center;
   font-weight: 500;
 }
