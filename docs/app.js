@@ -854,8 +854,8 @@ function renderReview() {
 
   if (!state.infusionOptOut && (pd.servingInfusionSet1 || pd.servingInfusionSet2)) {
     // Compare by Monday status INDEX, not label strings (avoids whitespace mismatches)
-    const origQty1 = pd.infQty1 || 0;
-    const origQty2 = pd.infQty2 || 0;
+    const origQty1 = parseInt(pd.infQty1, 10) || 0;
+    const origQty2 = parseInt(pd.infQty2, 10) || 0;
     const newIdx1 = getInfusionIndex(1);
     const origIdx1 = parseInfusionLabel(pd.infusionSet1)?.index || null;
     const newIdx2 = state.hasSecondSet ? getInfusionIndex(2) : null;
