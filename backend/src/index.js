@@ -417,8 +417,8 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
       res.json({ success: true, message });
 
       // ─── Fire-and-forget: send confirmation text after Monday writes settle ───
-      // Only for confirm (or delay < 20 days which acts as confirm)
-      if (submission.response === "confirm" || submission.delayLessThan20Days) {
+      // Send for confirm and delay responses (not cancel — patient is leaving)
+      if (submission.response === "confirm" || submission.response === "delay") {
         sendConfirmationTextAfterDelay(req.uid).catch((err) => {
           console.error(`[sms] Confirmation text failed for UID ${req.uid}:`, err.message);
           notifySmsError(`Confirmation text failed: ${err.message}`, req.uid);
