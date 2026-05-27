@@ -846,8 +846,8 @@ function renderReview() {
 
   if (!state.infusionOptOut && (pd.servingInfusionSet1 || pd.servingInfusionSet2)) {
     // Check qty or type changes
-    // Normalize whitespace (including narrow no-break spaces from Monday) for comparison
-    const normLabel = (s) => (s || "").replace(/[\s   ]+/g, " ").trim().toLowerCase();
+    // Normalize whitespace + standardize 6mm vs 6 mm so map keys match
+    const normLabel = (s) => (s || "").replace(/[\s   ]+/g, " ").replace(/(\d)\s*(mm|")/gi, "$1$2").trim().toLowerCase();
     const origQty1 = pd.infQty1 || 0;
     const origQty2 = pd.infQty2 || 0;
     const newType1 = getInfusionLabel(1) || pd.infusionSet1;

@@ -116,7 +116,7 @@
                 <h3>Sensors</h3>
                 <label class="skip-toggle" id="sensors-optout-btn" onclick="toggleOptOutBtn('sensors')">
                   <span class="skip-toggle-check" id="sensors-optout-icon"></span>
-                  <span>Skip</span>
+                  <span>Not Ordering</span>
                 </label>
                 <input type="checkbox" id="sensors-optout" style="display:none" onchange="toggleOptOut('sensors')">
               </div>
@@ -134,7 +134,7 @@
                 <h3>Infusion Sets</h3>
                 <label class="skip-toggle" id="infusion-optout-btn" onclick="toggleOptOutBtn('infusion')">
                   <span class="skip-toggle-check" id="infusion-optout-icon"></span>
-                  <span>Skip</span>
+                  <span>Not Ordering</span>
                 </label>
                 <input type="checkbox" id="infusion-optout" style="display:none" onchange="toggleOptOut('infusion')">
               </div>
@@ -207,7 +207,7 @@
                 <h3>Cartridges</h3>
                 <label class="skip-toggle" id="cartridges-optout-btn" onclick="toggleOptOutBtn('cartridges')">
                   <span class="skip-toggle-check" id="cartridges-optout-icon"></span>
-                  <span>Skip</span>
+                  <span>Not Ordering</span>
                 </label>
                 <input type="checkbox" id="cartridges-optout" style="display:none" onchange="toggleOptOut('cartridges')">
               </div>
@@ -223,9 +223,8 @@
             <div class="empty-warning hidden" id="empty-warning">
               You haven't selected anything to ship — check at least one section.
             </div>
-          </div>
 
-          <!-- Sticky OOP footer for Step 2 -->
+          <!-- OOP footer for Step 2 -->
           <div class="sticky-footer" id="step2-footer">
             <div class="oop-footer-summary" id="oop-footer-summary">
               <div class="oop-footer-row">
@@ -243,6 +242,7 @@
               <p class="oop-disclaimer">This is an estimate only and is not a guarantee of your final cost. Actual charges may vary based on your plan's processing.</p>
             </div>
             <button class="btn-continue" id="step2-continue" onclick="nextStep()">Continue</button>
+          </div>
           </div>
         </div>
 
