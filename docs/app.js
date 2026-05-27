@@ -272,6 +272,27 @@ const INFUSION_MAP = {
   },
 };
 
+// Infusion Set 2 has fewer options on Monday — separate map with Set 2 indexes
+const INFUSION_MAP_SET2 = {
+  "AutoSoft XC": {
+    "6 mm": { "5\"": 2, "23\"": 4, "32\"": 11, "43\"": 0 },
+    "9 mm": { "23\"": 6 },
+  },
+  "AutoSoft 90": {
+    "6 mm": { "23\"": 9, "43\"": 3 },
+    "9 mm": { "23\"": 7 },
+  },
+  "AutoSoft 30": {
+    "13 mm": { "23\"": 10 },
+  },
+  "TruSteel": {
+    "6 mm": { "23\"": 1 },
+  },
+  "VariSoft": {
+    "13 mm": { "32\"": 8 },
+  },
+};
+
 // Pump-type → allowed infusion set brands
 const PUMP_INFUSION_FILTER = {
   "ilet":          ["Contact", "Inset", "Luer"],
@@ -288,6 +309,11 @@ function getAllowedBrands() {
   return null; // no filter — show all
 }
 
+// Helper: return the correct infusion map for the given set number
+function getMapForSet(setNum) {
+  return setNum === 2 ? INFUSION_MAP_SET2 : INFUSION_MAP;
+}
+
 // Reverse lookup: Monday index → { brand, size, tubing }
 const INFUSION_REVERSE = {};
 for (const [brand, sizes] of Object.entries(INFUSION_MAP)) {
@@ -299,11 +325,12 @@ for (const [brand, sizes] of Object.entries(INFUSION_MAP)) {
 }
 
 // Also map label strings to their index for reverse lookup from label text
-function parseInfusionLabel(label) {
+function parseInfusionLabel(label, setNum) {
   if (!label) return null;
+  const map = getMapForSet(setNum || 1);
   // Collapse all whitespace (including narrow no-break space) and lowercase
   const normalized = label.replace(/[\s  ]+/g, ' ').trim().toLowerCase();
-  for (const [brand, sizes] of Object.entries(INFUSION_MAP)) {
+  for (const [brand, sizes] of Object.entries(map)) {
     for (const [size, tubings] of Object.entries(sizes)) {
       for (const [tubing, idx] of Object.entries(tubings)) {
         // Build the expected label from map keys and normalize the same way
@@ -325,25 +352,27 @@ function populateInfusionDropdowns(setNum, currentValue) {
 
   // Populate brand dropdown (filtered by pump type)
   const allowedBrands = getAllowedBrands();
-  const brands = Object.keys(INFUSION_MAP).filter(b => !allowedBrands || allowedBrands.includes(b));
+  const map = getMapForSet(setNum);
+  const brands = Object.keys(map).filter(b => !allowedBrands || allowedBrands.includes(b));
   brandSelect.innerHTML = brands.map(b => `<option value="${escAttr(b)}">${escHtml(b)}</option>`).join("");
 
   // Try to match current value
-  const parsed = parseInfusionLabel(currentValue);
+  const parsed = parseInfusionLabel(currentValue, setNum);
   if (parsed) {
     brandSelect.value = parsed.brand;
     populateSizeDropdown(setNum, parsed.brand, parsed.size);
     populateTubingDropdown(setNum, parsed.brand, parsed.size, parsed.tubing);
   } else if (brands.length > 0) {
     populateSizeDropdown(setNum, brands[0]);
-    const firstSize = Object.keys(INFUSION_MAP[brands[0]])[0];
+    const firstSize = Object.keys(map[brands[0]])[0];
     populateTubingDropdown(setNum, brands[0], firstSize);
   }
 }
 
 function populateSizeDropdown(setNum, brand, selectValue) {
   const sizeSelect = document.getElementById(`inf-size-${setNum}`);
-  const sizes = Object.keys(INFUSION_MAP[brand] || {});
+  const map = getMapForSet(setNum);
+  const sizes = Object.keys(map[brand] || {});
   sizeSelect.innerHTML = sizes.map(s => `<option value="${escAttr(s)}">${escHtml(s)}</option>`).join("");
   if (selectValue && sizes.includes(selectValue)) {
     sizeSelect.value = selectValue;
@@ -352,7 +381,8 @@ function populateSizeDropdown(setNum, brand, selectValue) {
 
 function populateTubingDropdown(setNum, brand, size, selectValue) {
   const tubingSelect = document.getElementById(`inf-tubing-${setNum}`);
-  const tubings = Object.keys((INFUSION_MAP[brand] || {})[size] || {});
+  const map = getMapForSet(setNum);
+  const tubings = Object.keys((map[brand] || {})[size] || {});
   tubingSelect.innerHTML = tubings.map(t => `<option value="${escAttr(t)}">${escHtml(t)}</option>`).join("");
   if (selectValue && tubings.includes(selectValue)) {
     tubingSelect.value = selectValue;
@@ -361,8 +391,9 @@ function populateTubingDropdown(setNum, brand, size, selectValue) {
 
 function handleInfBrandChange(setNum) {
   const brand = document.getElementById(`inf-brand-${setNum}`).value;
+  const map = getMapForSet(setNum);
   populateSizeDropdown(setNum, brand);
-  const firstSize = Object.keys(INFUSION_MAP[brand] || {})[0];
+  const firstSize = Object.keys(map[brand] || {})[0];
   populateTubingDropdown(setNum, brand, firstSize);
 }
 
@@ -383,10 +414,11 @@ function getInfusionLabel(setNum) {
 
 // Get the Monday status index for a set's current state
 function getInfusionIndex(setNum) {
+  const map = getMapForSet(setNum);
   const brand = document.getElementById(`inf-brand-${setNum}`)?.value;
   const size = document.getElementById(`inf-size-${setNum}`)?.value;
   const tubing = document.getElementById(`inf-tubing-${setNum}`)?.value;
-  return ((INFUSION_MAP[brand] || {})[size] || {})[tubing] || null;
+  return ((map[brand] || {})[size] || {})[tubing] || null;
 }
 
 // ─── Wizard Navigation ───
