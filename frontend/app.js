@@ -113,6 +113,13 @@ function renderWizard() {
 
   const pd = state.patientData;
 
+  // Set greeting with first name
+  const greetingEl = document.getElementById("patient-greeting");
+  if (greetingEl && pd.name) {
+    const firstName = pd.name.split(" ")[0];
+    greetingEl.textContent = `Hey, ${firstName}!`;
+  }
+
   // Step 1: Order date
   const nextOrder = pd.nextOrder;
   if (nextOrder) {
@@ -146,7 +153,7 @@ function renderWizard() {
   const insType = pd.primaryInsurance || "Unknown";
   const memberId = pd.memberId1 || "";
   document.getElementById("ins-type-display").textContent = simplifyInsurance(insType);
-  document.getElementById("ins-member-display").textContent = "Member ID: " + maskMemberId(memberId);
+  document.getElementById("ins-member-display").innerHTML = "Member ID: " + maskMemberId(memberId);
 
   // Set initial OOP in footer
   updateOopFooter();
@@ -247,6 +254,22 @@ const INFUSION_MAP = {
   },
 };
 
+// Pump-type → allowed infusion set brands
+const PUMP_INFUSION_FILTER = {
+  "ilet":          ["Contact", "Inset", "Luer"],
+  "t:slim":        ["AutoSoft XC", "AutoSoft 90", "AutoSoft 30", "TruSteel", "VariSoft"],
+  "mobi":          ["AutoSoft XC", "AutoSoft 90", "AutoSoft 30", "TruSteel", "VariSoft"],
+  "minimed 780g":  ["Mio Advance Clear"],
+};
+
+function getAllowedBrands() {
+  const pumpType = (state.patientData?.suppliesType || "").toLowerCase().trim();
+  for (const [key, brands] of Object.entries(PUMP_INFUSION_FILTER)) {
+    if (pumpType.includes(key)) return brands;
+  }
+  return null; // no filter — show all
+}
+
 // Reverse lookup: Monday index → { brand, size, tubing }
 const INFUSION_REVERSE = {};
 for (const [brand, sizes] of Object.entries(INFUSION_MAP)) {
@@ -282,8 +305,9 @@ function populateInfusionDropdowns(setNum, currentValue) {
   const tubingSelect = document.getElementById(`inf-tubing-${setNum}`);
   if (!brandSelect || !sizeSelect || !tubingSelect) return;
 
-  // Populate brand dropdown
-  const brands = Object.keys(INFUSION_MAP);
+  // Populate brand dropdown (filtered by pump type)
+  const allowedBrands = getAllowedBrands();
+  const brands = Object.keys(INFUSION_MAP).filter(b => !allowedBrands || allowedBrands.includes(b));
   brandSelect.innerHTML = brands.map(b => `<option value="${escAttr(b)}">${escHtml(b)}</option>`).join("");
 
   // Try to match current value
@@ -822,12 +846,14 @@ function renderReview() {
 
   if (!state.infusionOptOut && (pd.servingInfusionSet1 || pd.servingInfusionSet2)) {
     // Check qty or type changes
+    // Normalize whitespace (including narrow no-break spaces from Monday) for comparison
+    const normLabel = (s) => (s || "").replace(/[\s   ]+/g, " ").trim().toLowerCase();
     const origQty1 = pd.infQty1 || 0;
     const origQty2 = pd.infQty2 || 0;
     const newType1 = getInfusionLabel(1) || pd.infusionSet1;
     const newType2 = state.hasSecondSet ? (getInfusionLabel(2) || "") : "";
-    const typeChanged1 = newType1.toLowerCase() !== (pd.infusionSet1 || "").toLowerCase();
-    const typeChanged2 = state.hasSecondSet && newType2.toLowerCase() !== (pd.infusionSet2 || "").toLowerCase();
+    const typeChanged1 = normLabel(newType1) !== normLabel(pd.infusionSet1);
+    const typeChanged2 = state.hasSecondSet && normLabel(newType2) !== normLabel(pd.infusionSet2);
     if (state.infQty1 !== origQty1 || (state.hasSecondSet && state.infQty2 !== origQty2) || typeChanged1 || typeChanged2) {
       hasChanges = true;
       const origDesc = `${pd.infusionSet1 || "Set 1"} (${origQty1})` + (origQty2 > 0 ? ` + ${pd.infusionSet2 || "Set 2"} (${origQty2})` : "");
@@ -1139,7 +1165,8 @@ function formatDate(dateStr) {
 
 function maskMemberId(id) {
   if (!id || id.length < 4) return id || "N/A";
-  return "••••••••" + id.slice(-4);
+  const masked = "*".repeat(id.length - 4) + id.slice(-4);
+  return `<span class="member-id-mask">${masked}</span>`;
 }
 
 // ─── Address shrink for long text ───
@@ -1160,20 +1187,37 @@ function checkApartmentWarning(address) {
 function applyAddressShrink(el) {
   // Reset to default size first
   el.style.fontSize = "";
-  // Wait for render, then check if text overflows
+  el.style.wordBreak = "break-word";
+  el.style.overflowWrap = "break-word";
+  // Wait for render, then scale text to fill available width
   requestAnimationFrame(() => {
     const parent = el.parentElement;
     if (!parent) return;
     const maxWidth = parent.clientWidth - 32; // account for padding
-    let fontSize = 16; // start at 1rem (16px)
+    const baseFontSize = 16; // 1rem
     const minFontSize = 11;
+    const maxFontSize = 24;
+    let fontSize = baseFontSize;
     el.style.fontSize = fontSize + "px";
-    while (el.scrollWidth > maxWidth && fontSize > minFontSize) {
-      fontSize -= 0.5;
-      el.style.fontSize = fontSize + "px";
+
+    if (el.scrollWidth > maxWidth) {
+      // Shrink for long addresses
+      while (el.scrollWidth > maxWidth && fontSize > minFontSize) {
+        fontSize -= 0.5;
+        el.style.fontSize = fontSize + "px";
+      }
+    } else {
+      // Scale up for short addresses until we approach maxWidth
+      while (fontSize < maxFontSize) {
+        fontSize += 0.5;
+        el.style.fontSize = fontSize + "px";
+        if (el.scrollWidth > maxWidth) {
+          fontSize -= 0.5;
+          el.style.fontSize = fontSize + "px";
+          break;
+        }
+      }
     }
-    el.style.wordBreak = "break-word";
-    el.style.overflowWrap = "break-word";
   });
 }
 

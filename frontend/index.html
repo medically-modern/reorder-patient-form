@@ -70,6 +70,7 @@
         <!-- Step 1: Order Date -->
         <div class="wizard-panel" id="panel-1">
           <div class="panel-content">
+            <h2 class="greeting" id="patient-greeting"></h2>
             <p class="shipping-note">This is the date your order <strong>ships out</strong> — please allow 3–5 business days for delivery.</p>
 
             <div class="date-card">
@@ -113,6 +114,11 @@
             <div class="order-section" id="section-sensors">
               <div class="order-section-header">
                 <h3>Sensors</h3>
+                <label class="skip-toggle" id="sensors-optout-btn" onclick="toggleOptOutBtn('sensors')">
+                  <span class="skip-toggle-check" id="sensors-optout-icon"></span>
+                  <span>Skip</span>
+                </label>
+                <input type="checkbox" id="sensors-optout" style="display:none" onchange="toggleOptOut('sensors')">
               </div>
               <div class="order-section-body" id="sensors-body">
                 <div class="field-group">
@@ -120,14 +126,17 @@
                   <select id="sensor-type-select" class="native-select"></select>
                 </div>
               </div>
-              <button class="opt-out-btn" id="sensors-optout-btn" onclick="toggleOptOutBtn('sensors')">Not ordering sensors this time</button>
-              <input type="checkbox" id="sensors-optout" style="display:none" onchange="toggleOptOut('sensors')">
             </div>
 
             <!-- Infusion Sets -->
             <div class="order-section" id="section-infusion">
               <div class="order-section-header">
                 <h3>Infusion Sets</h3>
+                <label class="skip-toggle" id="infusion-optout-btn" onclick="toggleOptOutBtn('infusion')">
+                  <span class="skip-toggle-check" id="infusion-optout-icon"></span>
+                  <span>Skip</span>
+                </label>
+                <input type="checkbox" id="infusion-optout" style="display:none" onchange="toggleOptOut('infusion')">
               </div>
               <div class="order-section-body" id="infusion-body">
                 <!-- Set 1 -->
@@ -190,14 +199,17 @@
                 <!-- Add second set link -->
                 <a class="add-set-link" id="add-set-link" onclick="addSecondSet()">+ Add a second infusion set</a>
               </div>
-              <button class="opt-out-btn" id="infusion-optout-btn" onclick="toggleOptOutBtn('infusion')">Not ordering infusion sets this time</button>
-              <input type="checkbox" id="infusion-optout" style="display:none" onchange="toggleOptOut('infusion')">
             </div>
 
             <!-- Cartridges -->
             <div class="order-section" id="section-cartridges">
               <div class="order-section-header">
                 <h3>Cartridges</h3>
+                <label class="skip-toggle" id="cartridges-optout-btn" onclick="toggleOptOutBtn('cartridges')">
+                  <span class="skip-toggle-check" id="cartridges-optout-icon"></span>
+                  <span>Skip</span>
+                </label>
+                <input type="checkbox" id="cartridges-optout" style="display:none" onchange="toggleOptOut('cartridges')">
               </div>
               <div class="order-section-body" id="cartridges-body">
                 <div class="field-group">
@@ -205,8 +217,6 @@
                   <select id="cartridge-type-select" class="native-select" disabled></select>
                 </div>
               </div>
-              <button class="opt-out-btn" id="cartridges-optout-btn" onclick="toggleOptOutBtn('cartridges')">Not ordering cartridges this time</button>
-              <input type="checkbox" id="cartridges-optout" style="display:none" onchange="toggleOptOut('cartridges')">
             </div>
 
             <!-- Empty state warning -->
@@ -228,8 +238,9 @@
               </div>
               <div class="oop-footer-total">
                 <span class="oop-footer-total-amount" id="footer-total">$0.00</span>
-                <span class="oop-footer-total-label">out-of-pocket</span>
+                <span class="oop-footer-total-label">Out-of-Pocket Estimate</span>
               </div>
+              <p class="oop-disclaimer">This is an estimate only and is not a guarantee of your final cost. Actual charges may vary based on your plan's processing.</p>
             </div>
             <button class="btn-continue" id="step2-continue" onclick="nextStep()">Continue</button>
           </div>
@@ -286,7 +297,7 @@
               <p class="current-sub" id="ins-member-display"></p>
             </div>
 
-            <p class="step-question">Same insurance?</p>
+            <p class="step-question">Same insurance as of order date?</p>
 
             <div class="decision-buttons decision-buttons-small">
               <button class="decision-btn decision-small decision-yes" id="btn-ins-same" onclick="selectInsuranceChange('no')">
@@ -357,8 +368,9 @@
             <div class="review-oop" id="review-oop">
               <div class="oop-footer-total">
                 <span class="oop-footer-total-amount" id="review-total">$0.00</span>
-                <span class="oop-footer-total-label">out-of-pocket</span>
+                <span class="oop-footer-total-label">Out-of-Pocket Estimate</span>
               </div>
+              <p class="oop-disclaimer">This is an estimate only and is not a guarantee of your final cost. Actual charges may vary based on your plan's processing.</p>
             </div>
 
             <div class="step-footer">
@@ -376,7 +388,6 @@
   <!-- Success screen -->
   <div id="success-screen">
     <div class="success-icon">✓</div>
-    <h2 id="success-title">Thank you!</h2>
     <p id="success-message"></p>
     <p class="success-sub" id="success-sub">We'll send you a text with your confirmation details.</p>
   </div>

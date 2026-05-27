@@ -339,7 +339,15 @@ async function processReorderSubmission(uid, submission) {
   const tasks = [];
   const failures = [];
   const changeSummaryParts = [];
-  const now = new Date().toISOString();
+  const now = new Date().toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }) + " ET";
 
   // Normalize for case-insensitive, whitespace-insensitive comparison of status labels
   const norm = (s) => (s || "").replace(/[\s ]+/g, " ").trim().toLowerCase();

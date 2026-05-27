@@ -247,6 +247,15 @@ h1, h2, h3, h4 {
   margin-bottom: 1.25rem;
 }
 
+/* ─── Patient greeting ─── */
+
+.greeting {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+}
+
 /* ─── Shipping note (animated red callout) ─── */
 
 @keyframes shippingPulse {
@@ -523,13 +532,20 @@ input:disabled {
   transition: max-height 150ms ease-out, opacity 150ms ease-out;
 }
 
+.order-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.375rem;
+}
+
 .order-section-header h3 {
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-secondary);
-  margin-bottom: 0.375rem;
+  margin: 0;
 }
 
 .order-section-body {
@@ -759,6 +775,15 @@ input:disabled {
   letter-spacing: 0.04em;
 }
 
+.oop-disclaimer {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 0.375rem;
+  line-height: 1.4;
+  font-style: italic;
+}
+
 /* ─── Current value cards (address, insurance) ─── */
 
 .current-address-card,
@@ -791,6 +816,11 @@ input:disabled {
   font-size: 0.85rem;
   color: var(--text-secondary);
   margin-top: 0.125rem;
+}
+
+.member-id-mask {
+  font-family: monospace;
+  letter-spacing: 0.05em;
 }
 
 /* ─── Address auto-shrink for long text ─── */
@@ -1057,11 +1087,13 @@ input:disabled {
   font-weight: 700;
 }
 
-#success-screen h2 {
-  margin-bottom: 0.75rem;
-  color: var(--primary);
-  font-size: 1.5rem;
-  font-weight: 700;
+#success-screen #success-message {
+  color: var(--text);
+  max-width: 380px;
+  line-height: 1.7;
+  font-size: 1.05rem;
+  font-weight: 500;
+  margin-bottom: 0;
 }
 
 #success-screen p {
@@ -1118,34 +1150,64 @@ input:disabled {
 }
 
 
-/* ─── Opt-out button (compact) ─── */
+/* ─── Skip toggle (top-right of order section) ─── */
 
-.opt-out-btn {
-  display: block;
-  width: 100%;
-  margin-top: 0.375rem;
-  padding: 0.375rem 0.75rem;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-sm);
+.skip-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
   font-family: 'Inter', sans-serif;
   cursor: pointer;
   transition: all 0.15s;
   -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  white-space: nowrap;
 }
 
-.opt-out-btn:hover {
+.skip-toggle:hover {
   border-color: var(--text-secondary);
   color: var(--text-secondary);
 }
 
-.opt-out-btn.active {
+.skip-toggle.active {
   border-color: var(--danger);
   background: var(--danger-bg);
   color: var(--danger);
-  border-style: solid;
+}
+
+.skip-toggle-check {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  background: white;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.skip-toggle.active .skip-toggle-check {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.skip-toggle.active .skip-toggle-check::after {
+  content: "✓";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.55rem;
+  color: white;
+  font-weight: 700;
 }
 
 
