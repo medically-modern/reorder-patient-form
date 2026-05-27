@@ -29,6 +29,15 @@ const state = {
   infQty2: 0,
   hasSecondSet: false,
 
+  // Snapshots of initial dropdown state (captured after form loads, used for review comparison)
+  initialSensorType: null,
+  initialInfLabel1: null,
+  initialInfIndex1: null,
+  initialInfQty1: 0,
+  initialInfLabel2: null,
+  initialInfIndex2: null,
+  initialInfQty2: 0,
+
   // Step 3
   addressChanged: null,  // null until user selects same/changed
   newAddress: null,
@@ -215,6 +224,15 @@ function renderOrderOptions() {
   } else {
     infSection.style.display = "none";
   }
+
+  // Snapshot initial dropdown state for review comparison
+  state.initialSensorType = document.getElementById("sensor-type-select")?.value || null;
+  state.initialInfLabel1 = getInfusionLabel(1);
+  state.initialInfIndex1 = getInfusionIndex(1);
+  state.initialInfQty1 = state.infQty1;
+  state.initialInfLabel2 = getInfusionLabel(2);
+  state.initialInfIndex2 = getInfusionIndex(2);
+  state.initialInfQty2 = state.infQty2;
 }
 
 // ─── Infusion Set Conditional Mapping ───
@@ -839,37 +857,35 @@ function renderReview() {
     html += reviewItem("Next order date", formatDate(pd.nextOrder), formatDate(state.delayDate));
   }
 
-  // Order changes (sensors, infusion)
+  // Order changes — compare current dropdown state against initial snapshot
+  // (avoids all Monday label format / whitespace / type-coercion mismatches)
   if (!state.sensorsOptOut && pd.servingSensors) {
     const newSensor = document.getElementById("sensor-type-select")?.value;
-    if (newSensor && newSensor.toLowerCase() !== (pd.sensorsType || "").toLowerCase()) {
+    if (newSensor && newSensor !== state.initialSensorType) {
       hasChanges = true;
-      html += reviewItem("Sensor type", pd.sensorsType || "—", newSensor);
+      html += reviewItem("Sensor type", state.initialSensorType || "—", newSensor);
     }
   }
   if (state.sensorsOptOut && pd.servingSensors) {
     hasChanges = true;
-    html += reviewItem("Sensors", pd.sensorsType || "Ordered", "Not ordering this time");
+    html += reviewItem("Sensors", state.initialSensorType || "Ordered", "Not ordering this time");
   }
 
   if (!state.infusionOptOut && (pd.servingInfusionSet1 || pd.servingInfusionSet2)) {
-    // Compare by Monday status INDEX, not label strings (avoids whitespace mismatches)
-    const origQty1 = parseInt(pd.infQty1, 10) || 0;
-    const origQty2 = parseInt(pd.infQty2, 10) || 0;
     const newIdx1 = getInfusionIndex(1);
-    const origIdx1 = parseInfusionLabel(pd.infusionSet1)?.index || null;
     const newIdx2 = state.hasSecondSet ? getInfusionIndex(2) : null;
-    const origIdx2 = parseInfusionLabel(pd.infusionSet2)?.index || null;
-    const typeChanged1 = newIdx1 !== null && origIdx1 !== null && newIdx1 !== origIdx1;
-    const typeChanged2 = state.hasSecondSet && newIdx2 !== null && origIdx2 !== null && newIdx2 !== origIdx2;
-    if (state.infQty1 !== origQty1 || (state.hasSecondSet && state.infQty2 !== origQty2) || typeChanged1 || typeChanged2) {
+    const typeChanged1 = newIdx1 !== state.initialInfIndex1;
+    const typeChanged2 = state.hasSecondSet && newIdx2 !== state.initialInfIndex2;
+    const qtyChanged1 = state.infQty1 !== state.initialInfQty1;
+    const qtyChanged2 = state.hasSecondSet && state.infQty2 !== state.initialInfQty2;
+    if (typeChanged1 || typeChanged2 || qtyChanged1 || qtyChanged2) {
       hasChanges = true;
-      const newType1 = getInfusionLabel(1) || pd.infusionSet1;
-      const newType2 = state.hasSecondSet ? (getInfusionLabel(2) || "") : "";
-      const origDesc = `${pd.infusionSet1 || "Set 1"} (${origQty1})` + (origQty2 > 0 ? ` + ${pd.infusionSet2 || "Set 2"} (${origQty2})` : "");
-      let newDesc = `${newType1} (${state.infQty1})`;
+      const newLabel1 = getInfusionLabel(1);
+      const newLabel2 = state.hasSecondSet ? getInfusionLabel(2) : "";
+      const origDesc = `${state.initialInfLabel1 || "Set 1"} (${state.initialInfQty1})` + (state.initialInfQty2 > 0 ? ` + ${state.initialInfLabel2 || "Set 2"} (${state.initialInfQty2})` : "");
+      let newDesc = `${newLabel1} (${state.infQty1})`;
       if (state.hasSecondSet && state.infQty2 > 0) {
-        newDesc += ` + ${newType2} (${state.infQty2})`;
+        newDesc += ` + ${newLabel2} (${state.infQty2})`;
       }
       html += reviewItem("Infusion sets", origDesc, newDesc);
     }
