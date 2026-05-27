@@ -15,6 +15,7 @@ const {
   markReorderTextSent,
 } = require("./monday");
 const { sendSMS, buildReorderText } = require("./sms");
+const { notifyCronError, notifySmsError, notifyCronSummary } = require("./notify");
 
 const REORDER_URL = process.env.REORDER_URL || "https://medically-modern.github.io/reorder-patient-form";
 
@@ -30,6 +31,7 @@ async function processPatient(patient) {
 
   if (!phone) {
     console.warn(`[cron] Skipping UID ${uid} (${name}) — no phone number`);
+    await notifyCronError(`Patient "${name}" has no phone number — cannot send reorder text`, uid);
     return { skipped: true, reason: "no phone" };
   }
 
@@ -61,6 +63,7 @@ async function processPatient(patient) {
     return { success: true, uid, simulated: smsResult.simulated || false };
   } catch (err) {
     console.error(`[cron] Error processing UID ${uid} (${name}):`, err.message);
+    await notifyCronError(`Failed to process "${name}": ${err.message}`, uid);
     return { error: true, uid, message: err.message };
   }
 }
@@ -92,12 +95,12 @@ async function checkAndProcessReorders() {
 
     // Process sequentially to respect Monday rate limits
     const results = [];
-    for (const patient of eligible) {
-      const result = await processPatient(patient);
+    for (let i = 0; i < eligible.length; i++) {
+      const result = await processPatient(eligible[i]);
       results.push(result);
 
       // Small delay between patients to avoid rate limits
-      if (eligible.indexOf(patient) < eligible.length - 1) {
+      if (i < eligible.length - 1) {
         await new Promise((r) => setTimeout(r, 2000));
       }
     }
@@ -107,9 +110,14 @@ async function checkAndProcessReorders() {
     const skipped = results.filter((r) => r.skipped).length;
 
     console.log(`[cron] ═══ Reorder check complete: ${succeeded} sent, ${errored} errors, ${skipped} skipped ═══`);
+
+    // Notify if there were any errors
+    await notifyCronSummary(succeeded, errored, skipped);
+
     return { processed: succeeded, errors: errored, skipped };
   } catch (err) {
     console.error(`[cron] Fatal error in reorder check:`, err.message, err.stack);
+    await notifyCronError(`Fatal cron error: ${err.message}\n${err.stack || ""}`);
     return { error: err.message };
   }
 }
@@ -124,6 +132,7 @@ function startCron() {
   const task = cron.schedule(schedule, () => {
     checkAndProcessReorders().catch((err) => {
       console.error("[cron] Unhandled error:", err);
+      notifyCronError(`Unhandled cron error: ${err.message}`);
     });
   }, {
     timezone: "America/New_York",

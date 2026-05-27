@@ -14,6 +14,7 @@ const { sendSMS, buildConfirmationText, smsHealthCheck } = require("./sms");
 const { uploadInsuranceCard, getFile } = require("./s3");
 const { queueHealthCheck } = require("./queue");
 const { startCron, checkAndProcessReorders } = require("./cron");
+const { notifySubmissionError, notifySmsError, notifyUnhandled, notifyError } = require("./notify");
 const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, deleteReorderToken } = require("./redis");
 
 const app = express();
@@ -120,6 +121,7 @@ app.get("/auth/verify/:token", authLimiter, async (req, res) => {
     res.json({ success: true, uid: result.uid, token: result.jwt });
   } catch (err) {
     console.error("[auth] Error verifying reorder token:", err.message);
+    notifyError("Token Verify Error", `Token verification failed: ${err.message}`, { tags: ["lock"] });
     res.status(500).json({ error: "Something went wrong. Please try again." });
   }
 });
@@ -419,6 +421,7 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
       if (submission.response === "confirm" || submission.delayLessThan20Days) {
         sendConfirmationTextAfterDelay(req.uid).catch((err) => {
           console.error(`[sms] Confirmation text failed for UID ${req.uid}:`, err.message);
+          notifySmsError(`Confirmation text failed: ${err.message}`, req.uid);
         });
       }
     } finally {
@@ -426,6 +429,7 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
     }
   } catch (err) {
     console.error("[api] Submit error:", err.message, err.stack);
+    await notifySubmissionError(`Submit failed: ${err.message}`, req.uid);
     await releaseSubmissionLock(req.uid).catch(() => {});
     res.status(500).json({ error: "Failed to submit your form. Please try again." });
   }
@@ -525,4 +529,16 @@ app.listen(PORT, () => {
   console.log(`[reorder-api] Reorder patient form backend running on port ${PORT}`);
   initWriteQueue();
   startCron();
+});
+
+// ─── Global error handlers → ntfy ───
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception:", err);
+  notifyUnhandled("Exception", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  console.error("[FATAL] Unhandled rejection:", err);
+  notifyUnhandled("Rejection", err);
 });

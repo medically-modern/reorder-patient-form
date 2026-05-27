@@ -5,6 +5,7 @@ const {
   INSURANCE_RESPONSE_INDEX,
 } = require("./config");
 const { enqueueWriteAndWait, startWorker } = require("./queue");
+const { notifyMondayError } = require("./notify");
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
 const API_URL = "https://api.monday.com/v2";
@@ -586,6 +587,7 @@ async function processReorderSubmission(uid, submission) {
 
   if (failures.length > 0) {
     console.error(`[monday] Partial submission for UID ${uid}: ${saved}/${tasks.length} saved, failures:`, failures);
+    await notifyMondayError(`Partial write: ${saved}/${tasks.length} saved\nFailures:\n${failures.join("\n")}`, uid);
     return { success: false, partial: true, saved, failures };
   }
 
@@ -667,19 +669,43 @@ async function storeTokenInMonday(uid, token, link) {
 }
 
 // ─── Query patients where Days to Order = "20 days out" ───
+// Uses cursor-based pagination to handle 100+ patients
+
+function parsePatientItem(item) {
+  const col = (id) => {
+    const c = item.column_values.find((cv) => cv.id === id);
+    return c?.text || "";
+  };
+
+  return {
+    itemId: item.id,
+    name: item.name,
+    uid: col(COLUMNS.PATIENT_UID),
+    phone: col(COLUMNS.PHONE),
+    nextOrder: col(COLUMNS.NEXT_ORDER),
+    reorderTextSent: col(COLUMNS.REORDER_TEXT_SENT),
+    reorderToken: col(COLUMNS.REORDER_TOKEN),
+  };
+}
 
 async function getPatientsAt20DaysOut() {
   const safeBoard = validateNumericId(SUBSCRIPTION_BOARD_ID, "board ID");
   const safeDaysCol = validateColumnId(COLUMNS.DAYS_TO_ORDER);
 
-  // Query for items whose Days to Order status label contains "20"
-  // Monday's items_page_by_column_values works with status text values
-  const data = await mondayQuery(`{
+  const PAGE_SIZE = 100;
+  const MAX_PAGES = 20; // Safety cap: 2000 patients max
+  const allItems = [];
+  let cursor = null;
+  let page = 0;
+
+  // First page — uses items_page_by_column_values (no cursor param on first call)
+  const firstData = await mondayQuery(`{
     items_page_by_column_values(
       board_id: ${safeBoard},
-      limit: 100,
+      limit: ${PAGE_SIZE},
       columns: [{column_id: "${safeDaysCol}", column_values: ["20 Days"]}]
     ) {
+      cursor
       items {
         id name
         column_values { id type text value }
@@ -687,24 +713,49 @@ async function getPatientsAt20DaysOut() {
     }
   }`);
 
-  const items = data.items_page_by_column_values?.items || [];
+  const firstPage = firstData.items_page_by_column_values;
+  if (firstPage?.items) {
+    allItems.push(...firstPage.items);
+  }
+  cursor = firstPage?.cursor || null;
+  page++;
 
-  return items.map((item) => {
-    const col = (id) => {
-      const c = item.column_values.find((cv) => cv.id === id);
-      return c?.text || "";
-    };
+  // Subsequent pages — use next_items_page with cursor
+  while (cursor && page < MAX_PAGES) {
+    console.log(`[monday] Fetching page ${page + 1} of 20-days-out patients (cursor: ${cursor.slice(0, 20)}...)`);
 
-    return {
-      itemId: item.id,
-      name: item.name,
-      uid: col(COLUMNS.PATIENT_UID),
-      phone: col(COLUMNS.PHONE),
-      nextOrder: col(COLUMNS.NEXT_ORDER),
-      reorderTextSent: col(COLUMNS.REORDER_TEXT_SENT),
-      reorderToken: col(COLUMNS.REORDER_TOKEN),
-    };
-  });
+    const nextData = await mondayQuery(`{
+      next_items_page(
+        limit: ${PAGE_SIZE},
+        cursor: "${cursor}"
+      ) {
+        cursor
+        items {
+          id name
+          column_values { id type text value }
+        }
+      }
+    }`);
+
+    const nextPage = nextData.next_items_page;
+    if (nextPage?.items?.length > 0) {
+      allItems.push(...nextPage.items);
+    }
+    cursor = nextPage?.cursor || null;
+    page++;
+
+    // Small delay between pages to be nice to Monday API
+    if (cursor) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+
+  if (cursor) {
+    console.warn(`[monday] Hit MAX_PAGES (${MAX_PAGES}) — there may be more patients not fetched`);
+  }
+
+  console.log(`[monday] Total 20-days-out patients fetched: ${allItems.length} across ${page} page(s)`);
+  return allItems.map(parsePatientItem);
 }
 
 // ─── Mark a patient as having received the reorder text ───

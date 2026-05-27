@@ -8,6 +8,7 @@ const RC_CLIENT_SECRET = process.env.RC_CLIENT_SECRET;
 const RC_JWT = process.env.RC_JWT;
 const RC_FROM_NUMBER = process.env.RC_FROM_NUMBER;
 const PRODUCTION_SMS_ENABLED = process.env.PRODUCTION_SMS_ENABLED === "true";
+const { notifySmsError, notifyAuthError } = require("./notify");
 
 let _accessToken = null;
 let _tokenExpiresAt = 0;
@@ -35,7 +36,9 @@ async function authenticate() {
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`RingCentral auth failed (${res.status}): ${body}`);
+    const err = new Error(`RingCentral auth failed (${res.status}): ${body}`);
+    await notifyAuthError(`RC auth failed (${res.status}): ${body.slice(0, 200)}`);
+    throw err;
   }
 
   const data = await res.json();
@@ -124,7 +127,9 @@ async function sendSMS(toNumber, messageText, opts = {}) {
 
       if (!retry.ok) {
         const retryBody = await retry.text();
-        throw new Error(`RingCentral SMS failed after re-auth (${retry.status}): ${retryBody}`);
+        const retryErr = new Error(`RingCentral SMS failed after re-auth (${retry.status}): ${retryBody}`);
+        await notifySmsError(`SMS to ${e164To} failed after re-auth (${retry.status}): ${retryBody.slice(0, 200)}`);
+        throw retryErr;
       }
 
       const retryData = await retry.json();
@@ -132,7 +137,9 @@ async function sendSMS(toNumber, messageText, opts = {}) {
       return { success: true, messageId: retryData.id };
     }
 
-    throw new Error(`RingCentral SMS failed (${res.status}): ${body}`);
+    const smsErr = new Error(`RingCentral SMS failed (${res.status}): ${body}`);
+    await notifySmsError(`SMS to ${e164To} failed (${res.status}): ${body.slice(0, 200)}`);
+    throw smsErr;
   }
 
   const data = await res.json();
