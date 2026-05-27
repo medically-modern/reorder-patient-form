@@ -183,7 +183,7 @@ app.post("/admin/generate-token", async (req, res) => {
 
     // Generate token
     const token = await generateReorderToken(patientUid);
-    const reorderUrl = process.env.REORDER_URL || "https://medically-modern.github.io/reorder-patient-form";
+    const reorderUrl = process.env.REORDER_URL || "https://reorder.medicallymodern.com";
     const link = `${reorderUrl}?token=${token}`;
 
     // Store token + link in Monday

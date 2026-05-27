@@ -17,7 +17,7 @@ const {
 const { sendSMS, buildReorderText } = require("./sms");
 const { notifyCronError, notifySmsError, notifyCronSummary } = require("./notify");
 
-const REORDER_URL = process.env.REORDER_URL || "https://medically-modern.github.io/reorder-patient-form";
+const REORDER_URL = process.env.REORDER_URL || "https://reorder.medicallymodern.com";
 const PRODUCTION_SMS_ENABLED = process.env.PRODUCTION_SMS_ENABLED === "true";
 
 // ─── Process a single patient ───
