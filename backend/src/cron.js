@@ -18,6 +18,7 @@ const { sendSMS, buildReorderText } = require("./sms");
 const { notifyCronError, notifySmsError, notifyCronSummary } = require("./notify");
 
 const REORDER_URL = process.env.REORDER_URL || "https://medically-modern.github.io/reorder-patient-form";
+const PRODUCTION_SMS_ENABLED = process.env.PRODUCTION_SMS_ENABLED === "true";
 
 // ─── Process a single patient ───
 
@@ -27,6 +28,14 @@ async function processPatient(patient) {
   if (!uid) {
     console.warn(`[cron] Skipping item ${itemId} (${name}) — no UID`);
     return { skipped: true, reason: "no UID" };
+  }
+
+  // SAFETY GATE: When production SMS is off, only process [TEST] patients.
+  // This prevents writing tokens/links/timestamps to real patient rows.
+  const isTestPatient = name && name.includes("[TEST]");
+  if (!PRODUCTION_SMS_ENABLED && !isTestPatient) {
+    console.log(`[cron] Skipping UID ${uid} (${name}) — production SMS off, not a [TEST] patient`);
+    return { skipped: true, reason: "production off" };
   }
 
   if (!phone) {
@@ -72,6 +81,7 @@ async function processPatient(patient) {
 
 async function checkAndProcessReorders() {
   console.log(`[cron] ═══ Reorder check started at ${new Date().toISOString()} ═══`);
+  console.log(`[cron] Production SMS: ${PRODUCTION_SMS_ENABLED ? "ON — all patients" : "OFF — [TEST] patients only"}`);
 
   try {
     const patients = await getPatientsAt20DaysOut();
@@ -105,16 +115,17 @@ async function checkAndProcessReorders() {
       }
     }
 
-    const succeeded = results.filter((r) => r.success).length;
+    const realSent = results.filter((r) => r.success && !r.simulated).length;
+    const simulated = results.filter((r) => r.success && r.simulated).length;
     const errored = results.filter((r) => r.error).length;
     const skipped = results.filter((r) => r.skipped).length;
 
-    console.log(`[cron] ═══ Reorder check complete: ${succeeded} sent, ${errored} errors, ${skipped} skipped ═══`);
+    console.log(`[cron] ═══ Reorder check complete: ${realSent} sent (real), ${simulated} simulated, ${errored} errors, ${skipped} skipped ═══`);
 
     // Notify if there were any errors
-    await notifyCronSummary(succeeded, errored, skipped);
+    await notifyCronSummary(realSent + simulated, errored, skipped);
 
-    return { processed: succeeded, errors: errored, skipped };
+    return { processed: realSent, simulated, errors: errored, skipped };
   } catch (err) {
     console.error(`[cron] Fatal error in reorder check:`, err.message, err.stack);
     await notifyCronError(`Fatal cron error: ${err.message}\n${err.stack || ""}`);
