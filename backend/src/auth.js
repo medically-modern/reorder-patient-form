@@ -21,8 +21,8 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // 4. Patient fills out form within that session
 //
 // The token is REUSABLE: it stays alive in Redis until its TTL expires
-// (7 days by default). Each click issues a fresh JWT session (24h).
-// This way if a patient closes their browser, they can re-open the link.
+// (20 days by default — matches the reorder cycle window). Each click
+// issues a fresh JWT session (24h). Patient can re-open the link anytime.
 
 // ─── Generate a reorder token for a patient ───
 

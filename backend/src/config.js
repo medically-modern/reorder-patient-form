@@ -61,6 +61,7 @@ const COLUMNS = {
   REORDER_TOKEN:              "text_mm3kvqxx",       // Text — reorder confirmation token
   REORDER_LINK:               "text_mm3khve4",       // Text — reorder confirmation link
   INSURANCE_CARD:             "file_mm3knk5q",       // File — uploaded insurance card images
+  REORDER_TEXT_SENT:          "text_mm3rzqks",       // Text — timestamp when reorder SMS was sent (cron dedup)
 
   // Existing file columns
   CLINICALS_FILES:  "file_mkp0vm0a",                 // MN Docs / Clinicals files
@@ -91,7 +92,7 @@ const INSURANCE_RESPONSE_INDEX = {
 // Auth configuration
 const AUTH = {
   TOKEN_BYTES: 32,                    // 32 bytes = 64 hex chars
-  TOKEN_TTL: 86400 * 7,              // 7 days for reorder token (patient may not click immediately)
+  TOKEN_TTL: 86400 * 20,             // 20 days for reorder token (matches reorder cycle window)
   JWT_EXPIRY: "24h",                  // 24-hour session (shorter than portal — single form fill)
   RATE_LIMIT_AUTH: 50,                // Per-token verification attempts
   RATE_LIMIT_AUTH_WINDOW: 3600,       // 1 hour

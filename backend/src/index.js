@@ -7,11 +7,13 @@ const cookieParser = require("cookie-parser");
 const multer = require("multer");
 const { verifyReorderToken, generateReorderToken, requireAuth, logout, COOKIE_OPTIONS } = require("./auth");
 const {
-  getPatientData, processReorderSubmission, findPatientByPhone,
+  getPatientData, getPatientOrderDetails, processReorderSubmission, findPatientByPhone,
   storeTokenInMonday, getStatusIndexMap, resolveStatusIndex, initWriteQueue,
 } = require("./monday");
+const { sendSMS, buildConfirmationText, smsHealthCheck } = require("./sms");
 const { uploadInsuranceCard, getFile } = require("./s3");
 const { queueHealthCheck } = require("./queue");
+const { startCron, checkAndProcessReorders } = require("./cron");
 const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, deleteReorderToken } = require("./redis");
 
 const app = express();
@@ -78,11 +80,14 @@ app.use(globalLimiter);
 app.get("/health", async (req, res) => {
   const redisOk = await healthCheck();
   const queue = queueHealthCheck();
+  const sms = smsHealthCheck();
   res.json({
     status: "ok",
     service: "reorder-patient-form",
     redis: redisOk ? "connected" : "disconnected",
     queue,
+    sms,
+    cron: "active",
     timestamp: new Date().toISOString(),
   });
 });
@@ -189,7 +194,7 @@ app.post("/admin/generate-token", async (req, res) => {
       uid: patientUid,
       link,
       token,
-      expiresIn: "7 days",
+      expiresIn: "20 days",
     });
   } catch (err) {
     console.error("[admin] Error generating token:", err.message, err.stack);
@@ -197,8 +202,60 @@ app.post("/admin/generate-token", async (req, res) => {
   }
 });
 
-// NOTE: SMS endpoint removed — links will be sent via Monday or another system.
-// POST /admin/send-reorder-sms can be re-added when auto-texting is needed.
+// POST /admin/trigger-reorder-check — Manually trigger the cron job
+app.post("/admin/trigger-reorder-check", async (req, res) => {
+  try {
+    const apiKey = req.headers["x-api-key"];
+    if (apiKey !== process.env.ADMIN_API_KEY) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    console.log("[admin] Manual reorder check triggered");
+    const result = await checkAndProcessReorders();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error("[admin] Manual reorder check failed:", err.message);
+    res.status(500).json({ error: "Reorder check failed" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// CONFIRMATION TEXT — sent after patient submits the form
+// ═══════════════════════════════════════════════════════
+
+async function sendConfirmationTextAfterDelay(uid) {
+  // Wait for Monday writes to settle
+  const DELAY_MS = 20_000; // 20 seconds
+  console.log(`[sms] Waiting ${DELAY_MS / 1000}s before sending confirmation text for UID ${uid}...`);
+  await new Promise((r) => setTimeout(r, DELAY_MS));
+
+  // Re-read from Monday to get the actual written values
+  const details = await getPatientOrderDetails(uid);
+  if (!details) {
+    console.error(`[sms] Cannot send confirmation — patient ${uid} not found in Monday`);
+    return;
+  }
+
+  if (!details.phone) {
+    console.error(`[sms] Cannot send confirmation — no phone for UID ${uid}`);
+    return;
+  }
+
+  const messageText = buildConfirmationText({
+    name: details.name,
+    address: details.address,
+    nextOrder: details.nextOrder,
+    sensorsType: details.sensorsType,
+    suppliesType: details.suppliesType,
+    infusionSet1: details.infusionSet1,
+    infQty1: details.infQty1,
+    infusionSet2: details.infusionSet2,
+    infQty2: details.infQty2,
+  });
+
+  await sendSMS(details.phone, messageText, { patientName: details.name });
+  console.log(`[sms] Confirmation text sent to UID ${uid}`);
+}
 
 // ═══════════════════════════════════════════════════════
 // PATIENT API ROUTES (all require auth)
@@ -356,6 +413,14 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
       }
 
       res.json({ success: true, message });
+
+      // ─── Fire-and-forget: send confirmation text after Monday writes settle ───
+      // Only for confirm (or delay < 20 days which acts as confirm)
+      if (submission.response === "confirm" || submission.delayLessThan20Days) {
+        sendConfirmationTextAfterDelay(req.uid).catch((err) => {
+          console.error(`[sms] Confirmation text failed for UID ${req.uid}:`, err.message);
+        });
+      }
     } finally {
       await releaseSubmissionLock(req.uid);
     }
@@ -459,4 +524,5 @@ const { COLUMNS } = require("./config");
 app.listen(PORT, () => {
   console.log(`[reorder-api] Reorder patient form backend running on port ${PORT}`);
   initWriteQueue();
+  startCron();
 });

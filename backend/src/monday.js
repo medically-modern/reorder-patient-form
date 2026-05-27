@@ -666,6 +666,86 @@ async function storeTokenInMonday(uid, token, link) {
   console.log(`[monday] Reorder token stored for UID ${uid}`);
 }
 
+// ─── Query patients where Days to Order = "20 days out" ───
+
+async function getPatientsAt20DaysOut() {
+  const safeBoard = validateNumericId(SUBSCRIPTION_BOARD_ID, "board ID");
+  const safeDaysCol = validateColumnId(COLUMNS.DAYS_TO_ORDER);
+
+  // Query for items whose Days to Order status label contains "20"
+  // Monday's items_page_by_column_values works with status text values
+  const data = await mondayQuery(`{
+    items_page_by_column_values(
+      board_id: ${safeBoard},
+      limit: 100,
+      columns: [{column_id: "${safeDaysCol}", column_values: ["20 Days"]}]
+    ) {
+      items {
+        id name
+        column_values { id type text value }
+      }
+    }
+  }`);
+
+  const items = data.items_page_by_column_values?.items || [];
+
+  return items.map((item) => {
+    const col = (id) => {
+      const c = item.column_values.find((cv) => cv.id === id);
+      return c?.text || "";
+    };
+
+    return {
+      itemId: item.id,
+      name: item.name,
+      uid: col(COLUMNS.PATIENT_UID),
+      phone: col(COLUMNS.PHONE),
+      nextOrder: col(COLUMNS.NEXT_ORDER),
+      reorderTextSent: col(COLUMNS.REORDER_TEXT_SENT),
+      reorderToken: col(COLUMNS.REORDER_TOKEN),
+    };
+  });
+}
+
+// ─── Mark a patient as having received the reorder text ───
+
+async function markReorderTextSent(itemId, timestamp) {
+  const safeId = validateNumericId(itemId, "item ID");
+  await writeText(safeId, COLUMNS.REORDER_TEXT_SENT, timestamp || new Date().toISOString());
+}
+
+// ─── Read patient data fresh from Monday (for confirmation text) ───
+
+async function getPatientOrderDetails(uid) {
+  const item = await findPatientByUid(uid);
+  if (!item) return null;
+
+  const col = (id) => {
+    const c = item.column_values.find((cv) => cv.id === id);
+    return c?.text || "";
+  };
+
+  const isServing = (val) => val && val !== "Not Serving" && val.trim() !== "";
+
+  const sensorsType = col(COLUMNS.SENSORS_TYPE);
+  const suppliesType = col(COLUMNS.SUPPLIES_TYPE);
+  const infusionSet1 = col(COLUMNS.INFUSION_SET_1);
+  const infusionSet2 = col(COLUMNS.INFUSION_SET_2);
+
+  return {
+    name: item.name,
+    phone: col(COLUMNS.PHONE),
+    address: col(COLUMNS.ADDRESS),
+    nextOrder: col(COLUMNS.NEXT_ORDER),
+    sensorsType: isServing(sensorsType) ? sensorsType : null,
+    suppliesType: isServing(suppliesType) ? suppliesType : null,
+    infusionSet1: isServing(infusionSet1) ? infusionSet1 : null,
+    infQty1: isServing(infusionSet1) ? col(COLUMNS.INF_QTY_1) : null,
+    infusionSet2: isServing(infusionSet2) ? infusionSet2 : null,
+    infQty2: isServing(infusionSet2) ? col(COLUMNS.INF_QTY_2) : null,
+  };
+}
+
 // ─── Initialize write queue ───
 
 function initWriteQueue() {
@@ -684,10 +764,13 @@ module.exports = {
   findPatientByPhone,
   findPatientByUid,
   getPatientData,
+  getPatientOrderDetails,
   processReorderSubmission,
   uploadFileToMonday,
   storeTokenInMonday,
   getStatusIndexMap,
   resolveStatusIndex,
+  getPatientsAt20DaysOut,
+  markReorderTextSent,
   initWriteQueue,
 };
