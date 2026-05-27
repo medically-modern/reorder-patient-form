@@ -872,17 +872,19 @@ function renderReview() {
   }
 
   if (!state.infusionOptOut && (pd.servingInfusionSet1 || pd.servingInfusionSet2)) {
-    const newIdx1 = getInfusionIndex(1);
-    const newIdx2 = state.hasSecondSet ? getInfusionIndex(2) : null;
-    const typeChanged1 = newIdx1 !== state.initialInfIndex1;
-    const typeChanged2 = state.hasSecondSet && newIdx2 !== state.initialInfIndex2;
+    // Fuzzy match: strip ALL whitespace and lowercase, so "AutoSoft 90 6 mm  23""
+    // and "AutoSoft 90 6 mm 23"" and "AutoSoft 90 6mm 23"" all compare as equal.
+    // This is ONLY for the review display — the actual Monday submission uses indexes.
+    const fuzzy = (s) => (s || "").replace(/\s+/g, "").toLowerCase();
+    const newLabel1 = getInfusionLabel(1);
+    const newLabel2 = state.hasSecondSet ? getInfusionLabel(2) : "";
+    const typeChanged1 = fuzzy(newLabel1) !== fuzzy(pd.infusionSet1);
+    const typeChanged2 = state.hasSecondSet && fuzzy(newLabel2) !== fuzzy(pd.infusionSet2);
     const qtyChanged1 = state.infQty1 !== state.initialInfQty1;
     const qtyChanged2 = state.hasSecondSet && state.infQty2 !== state.initialInfQty2;
     if (typeChanged1 || typeChanged2 || qtyChanged1 || qtyChanged2) {
       hasChanges = true;
-      const newLabel1 = getInfusionLabel(1);
-      const newLabel2 = state.hasSecondSet ? getInfusionLabel(2) : "";
-      const origDesc = `${state.initialInfLabel1 || "Set 1"} (${state.initialInfQty1})` + (state.initialInfQty2 > 0 ? ` + ${state.initialInfLabel2 || "Set 2"} (${state.initialInfQty2})` : "");
+      const origDesc = `${pd.infusionSet1 || "Set 1"} (${state.initialInfQty1})` + (state.initialInfQty2 > 0 ? ` + ${pd.infusionSet2 || "Set 2"} (${state.initialInfQty2})` : "");
       let newDesc = `${newLabel1} (${state.infQty1})`;
       if (state.hasSecondSet && state.infQty2 > 0) {
         newDesc += ` + ${newLabel2} (${state.infQty2})`;
