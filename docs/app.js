@@ -30,7 +30,7 @@ const state = {
   hasSecondSet: false,
 
   // Step 3
-  addressChanged: false,
+  addressChanged: null,  // null until user selects same/changed
   newAddress: null,
   addressSelectedFromGoogle: false,
   addressCoords: { lat: 0, lng: 0 },
@@ -775,6 +775,10 @@ function validateCurrentStep() {
   }
 
   if (step === 3) {
+    if (state.addressChanged === null) {
+      alert("Please confirm whether your address is the same or has changed.");
+      return false;
+    }
     if (state.addressChanged) {
       const addr = document.getElementById("address-input").value.trim();
       if (!addr) {
@@ -791,6 +795,10 @@ function validateCurrentStep() {
   }
 
   if (step === 4) {
+    if (state.insuranceChanged === null) {
+      alert("Please confirm whether your insurance is the same or has changed.");
+      return false;
+    }
     if (state.insuranceChanged === "yes") {
       const insType = document.getElementById("new-insurance-type").value;
       if (!insType) {
@@ -845,17 +853,19 @@ function renderReview() {
   }
 
   if (!state.infusionOptOut && (pd.servingInfusionSet1 || pd.servingInfusionSet2)) {
-    // Check qty or type changes
-    // Normalize whitespace + standardize 6mm vs 6 mm so map keys match
-    const normLabel = (s) => (s || "").replace(/[\s   ]+/g, " ").replace(/(\d)\s*(mm|")/gi, "$1$2").trim().toLowerCase();
+    // Compare by Monday status INDEX, not label strings (avoids whitespace mismatches)
     const origQty1 = pd.infQty1 || 0;
     const origQty2 = pd.infQty2 || 0;
-    const newType1 = getInfusionLabel(1) || pd.infusionSet1;
-    const newType2 = state.hasSecondSet ? (getInfusionLabel(2) || "") : "";
-    const typeChanged1 = normLabel(newType1) !== normLabel(pd.infusionSet1);
-    const typeChanged2 = state.hasSecondSet && normLabel(newType2) !== normLabel(pd.infusionSet2);
+    const newIdx1 = getInfusionIndex(1);
+    const origIdx1 = parseInfusionLabel(pd.infusionSet1)?.index || null;
+    const newIdx2 = state.hasSecondSet ? getInfusionIndex(2) : null;
+    const origIdx2 = parseInfusionLabel(pd.infusionSet2)?.index || null;
+    const typeChanged1 = newIdx1 !== null && origIdx1 !== null && newIdx1 !== origIdx1;
+    const typeChanged2 = state.hasSecondSet && newIdx2 !== null && origIdx2 !== null && newIdx2 !== origIdx2;
     if (state.infQty1 !== origQty1 || (state.hasSecondSet && state.infQty2 !== origQty2) || typeChanged1 || typeChanged2) {
       hasChanges = true;
+      const newType1 = getInfusionLabel(1) || pd.infusionSet1;
+      const newType2 = state.hasSecondSet ? (getInfusionLabel(2) || "") : "";
       const origDesc = `${pd.infusionSet1 || "Set 1"} (${origQty1})` + (origQty2 > 0 ? ` + ${pd.infusionSet2 || "Set 2"} (${origQty2})` : "");
       let newDesc = `${newType1} (${state.infQty1})`;
       if (state.hasSecondSet && state.infQty2 > 0) {
