@@ -519,6 +519,18 @@ input:disabled {
   transition: all 150ms ease-out;
 }
 
+/* Vertical-density variants. .panel-content gets data-order-density
+   set by JS (updateOrderDensity) whenever the Step 2 layout changes
+   — adding/removing Set 2, toggling Skip, etc. Variables cascade
+   onto .order-section + .order-section-header below. */
+[data-order-density="roomy"]   .order-section { padding: 0.75rem 0.75rem;   margin-bottom: 0.625rem; }
+[data-order-density="normal"]  .order-section { padding: 0.5rem 0.75rem;    margin-bottom: 0.375rem; }
+[data-order-density="compact"] .order-section { padding: 0.375rem 0.75rem;  margin-bottom: 0.25rem;  }
+[data-order-density="roomy"]   .order-section-header  { margin-bottom: 0.25rem; }
+[data-order-density="normal"]  .order-section-header  { margin-bottom: 0.125rem; }
+[data-order-density="compact"] .order-section-header  { margin-bottom: 0.0625rem; }
+
+
 .order-section.opted-out {
   opacity: 0.5;
 }

@@ -167,6 +167,9 @@ function renderWizard() {
   // Set initial OOP in footer
   updateOopFooter();
 
+  // Apply density now that all section visibility / skip state is set.
+  updateOrderDensity();
+
   // Add date change listener
   document.getElementById("delay-date-input").addEventListener("change", handleDelayDateChange);
 
@@ -615,6 +618,33 @@ function toggleOptOutBtn(section) {
   toggleOptOut(section);
 }
 
+function updateOrderDensity() {
+  // Count "active" sections (visible AND not skipped). pd reflects
+  // whether the patient has the line at all; state.*OptOut tracks
+  // operator skip toggles.
+  const pd = state.patientData || {};
+  const sensorsActive   = pd.servingSensors                                && !state.sensorsOptOut;
+  const cartridgesActive= pd.servingSupplies                                && !state.cartridgesOptOut;
+  const infusionActive  = (pd.servingInfusionSet1 || pd.servingInfusionSet2) && !state.infusionOptOut;
+  const activeCount = (sensorsActive ? 1 : 0) + (cartridgesActive ? 1 : 0) + (infusionActive ? 1 : 0);
+  const twoSets = !!state.hasSecondSet;
+
+  let density;
+  if (twoSets) {
+    density = "compact";
+  } else if (activeCount <= 1) {
+    density = "roomy";
+  } else {
+    density = "normal";
+  }
+
+  // Apply to the Step 2 panel content; cascades to children via CSS
+  // variables. Safe to call before the panel exists — querySelector
+  // bails gracefully.
+  const target = document.querySelector("#panel-2 .panel-content");
+  if (target) target.setAttribute("data-order-density", density);
+}
+
 function toggleOptOut(section) {
   const checkbox = document.getElementById(`${section}-optout`);
   const sectionEl = document.getElementById(`section-${section}`);
@@ -629,6 +659,7 @@ function toggleOptOut(section) {
   // Check empty state
   checkEmptyState();
   updateOopFooter();
+  updateOrderDensity();
 }
 
 function checkEmptyState() {
@@ -731,6 +762,7 @@ function addSecondSet() {
   document.getElementById("inf-qty-2").textContent = "0";
   const body = document.getElementById("infusion-body");
   if (body) body.classList.add("has-second-set");
+  updateOrderDensity();
 
   // Populate set 2 dropdowns
   populateInfusionDropdowns(2, "");
@@ -746,6 +778,7 @@ function removeSecondSet() {
   const body = document.getElementById("infusion-body");
   if (body) body.classList.remove("has-second-set");
   updateQtyButtons();
+  updateOrderDensity();
   updateOopFooter();
 }
 
