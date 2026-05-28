@@ -613,6 +613,7 @@ input:disabled {
 .infusion-set-label {
   display: flex;
   align-items: center;
+  justify-content: flex-start;   /* anchor: Boxes sits left for single-set */
   gap: 0.5rem;
   min-height: 32px;
   margin-bottom: 0.5rem;
@@ -1257,7 +1258,8 @@ input:disabled {
   justify-content: center;
   line-height: 1;
 }
-.inf-field-boxes-inline .qty-btn:disabled {
+.inf-field-boxes-inline .qty-btn:disabled,
+.inf-field-boxes-inline .qty-btn.at-cap {
   opacity: 0.35;
   cursor: not-allowed;
 }

@@ -748,8 +748,22 @@ function updateQtyButtons() {
     const roomLeft = combinedMax - otherVal;
 
     const btns = row.querySelectorAll(".qty-btn");
-    if (btns[0]) btns[0].disabled = val <= 0;
-    if (btns[1]) btns[1].disabled = val >= roomLeft;
+    // Use aria-disabled + a .at-cap class instead of the real
+    // disabled attribute. disabled=true on the button intercepts
+    // the click event before our onclick handler runs, which kills
+    // the chain to stepQty → showMaxWarning. With the visual cue
+    // class, the button still looks unclickable but the tap fires
+    // stepQty which shows the "Max N boxes" callout.
+    if (btns[0]) {
+      const atMin = val <= 0;
+      btns[0].classList.toggle("at-cap", atMin);
+      btns[0].setAttribute("aria-disabled", atMin ? "true" : "false");
+    }
+    if (btns[1]) {
+      const atMax = val >= roomLeft;
+      btns[1].classList.toggle("at-cap", atMax);
+      btns[1].setAttribute("aria-disabled", atMax ? "true" : "false");
+    }
   });
 }
 
