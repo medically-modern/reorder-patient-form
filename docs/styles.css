@@ -855,7 +855,7 @@ input:disabled {
   background: var(--primary-light);
   border: 1px solid rgba(11,110,79,0.1);
   border-radius: var(--radius-sm);
-  padding: 0.625rem 0.75rem;
+  padding: 0.875rem 0.75rem;
   margin-bottom: 0.5rem;
 }
 
@@ -889,19 +889,28 @@ input:disabled {
 
 /* ─── Address auto-shrink for long text ─── */
 
+/* Address sizing — viewport-scaled with a comfortable floor + cap.
+   Replaces the JS auto-shrink loop. On a typical iPhone (~390px
+   viewport) this lands around 22-24px. Short addresses render
+   single-line large; long addresses wrap to 2 lines at the same
+   comfortable size — either way the text fills the card visually
+   instead of sitting as a tiny line in a big empty box.            */
 .current-value.address-text {
+  font-size: clamp(1.25rem, 5.5vw, 1.875rem);
+  line-height: 1.3;
+  font-weight: 700;
+  text-align: center;
+  white-space: normal;
   word-break: break-word;
-  overflow-wrap: break-word;
-  transition: font-size 150ms ease;
+  overflow-wrap: anywhere;
+  /* Transition kept off so JS overrides don't trigger an animation —
+     not used now but the rule preserves the option. */
 }
 
-.current-value.address-text.address-long {
-  font-size: 0.85rem;
-}
-
-.current-value.address-text.address-xlong {
-  font-size: 0.75rem;
-}
+/* Legacy classes the previous shrink logic toggled — kept as
+   no-ops in case any cached HTML/JS still references them. */
+.current-value.address-text.address-long,
+.current-value.address-text.address-xlong { font-size: inherit; }
 
 /* New address display in review */
 .review-item-after.address-text {
