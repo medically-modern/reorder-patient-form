@@ -413,7 +413,9 @@ async function processReorderSubmission(uid, submission) {
     const oc = submission.orderChanges;
 
     // Sensors type
-    if (oc.sensorsType !== undefined && oc.sensorsType !== null) {
+    if (oc.sensorsOptOut) {
+      changeSummaryParts.push(`Patient skipped CGM sensors this order.`);
+    } else if (oc.sensorsType !== undefined && oc.sensorsType !== null) {
       const currentVal = col(COLUMNS.SENSORS_TYPE);
       if (norm(oc.sensorsType) !== norm(currentVal)) {
         const idx = resolveStatusIndex(COLUMNS.SENSORS_TYPE, oc.sensorsType, indexMap);
@@ -426,8 +428,10 @@ async function processReorderSubmission(uid, submission) {
       }
     }
 
-    // Supplies type
-    if (oc.suppliesType !== undefined && oc.suppliesType !== null) {
+    // Supplies type (cartridges)
+    if (oc.cartridgesOptOut) {
+      changeSummaryParts.push(`Patient skipped cartridges this order.`);
+    } else if (oc.suppliesType !== undefined && oc.suppliesType !== null) {
       const currentVal = col(COLUMNS.SUPPLIES_TYPE);
       if (norm(oc.suppliesType) !== norm(currentVal)) {
         const idx = resolveStatusIndex(COLUMNS.SUPPLIES_TYPE, oc.suppliesType, indexMap);
@@ -440,8 +444,13 @@ async function processReorderSubmission(uid, submission) {
       }
     }
 
+    // Infusion Sets
+    if (oc.infusionOptOut) {
+      changeSummaryParts.push(`Patient skipped infusion sets this order.`);
+    }
+
     // Infusion Set 1
-    if (oc.infusionSet1 !== undefined && oc.infusionSet1 !== null) {
+    if (!oc.infusionOptOut && oc.infusionSet1 !== undefined && oc.infusionSet1 !== null) {
       const currentVal = col(COLUMNS.INFUSION_SET_1);
       if (norm(oc.infusionSet1) !== norm(currentVal)) {
         const idx = resolveStatusIndex(COLUMNS.INFUSION_SET_1, oc.infusionSet1, indexMap);
@@ -455,7 +464,7 @@ async function processReorderSubmission(uid, submission) {
     }
 
     // Infusion Qty 1
-    if (oc.infQty1 !== undefined && oc.infQty1 !== null) {
+    if (!oc.infusionOptOut && oc.infQty1 !== undefined && oc.infQty1 !== null) {
       const currentVal = col(COLUMNS.INF_QTY_1);
       if (String(oc.infQty1) !== currentVal) {
         tasks.push({ label: "Infusion Qty 1", fn: () => writeNumber(itemId, COLUMNS.INF_QTY_1, oc.infQty1) });
@@ -464,7 +473,7 @@ async function processReorderSubmission(uid, submission) {
     }
 
     // Infusion Set 2
-    if (oc.infusionSet2 !== undefined && oc.infusionSet2 !== null) {
+    if (!oc.infusionOptOut && oc.infusionSet2 !== undefined && oc.infusionSet2 !== null) {
       const currentVal = col(COLUMNS.INFUSION_SET_2);
       if (norm(oc.infusionSet2) !== norm(currentVal)) {
         const idx = resolveStatusIndex(COLUMNS.INFUSION_SET_2, oc.infusionSet2, indexMap);
@@ -478,7 +487,7 @@ async function processReorderSubmission(uid, submission) {
     }
 
     // Infusion Qty 2
-    if (oc.infQty2 !== undefined && oc.infQty2 !== null) {
+    if (!oc.infusionOptOut && oc.infQty2 !== undefined && oc.infQty2 !== null) {
       const currentVal = col(COLUMNS.INF_QTY_2);
       if (String(oc.infQty2) !== currentVal) {
         tasks.push({ label: "Infusion Qty 2", fn: () => writeNumber(itemId, COLUMNS.INF_QTY_2, oc.infQty2) });

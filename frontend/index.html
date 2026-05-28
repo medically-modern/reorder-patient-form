@@ -113,10 +113,10 @@
             <!-- Sensors -->
             <div class="order-section" id="section-sensors">
               <div class="order-section-header">
-                <h3>Sensors</h3>
+                <h3>CGM Sensors</h3>
                 <label class="skip-toggle" id="sensors-optout-btn" onclick="toggleOptOutBtn('sensors')">
                   <span class="skip-toggle-check" id="sensors-optout-icon"></span>
-                  <span>Not Ordering</span>
+                  <span>Skip</span>
                 </label>
                 <input type="checkbox" id="sensors-optout" style="display:none" onchange="toggleOptOut('sensors')">
               </div>
@@ -134,7 +134,7 @@
                 <h3>Infusion Sets</h3>
                 <label class="skip-toggle" id="infusion-optout-btn" onclick="toggleOptOutBtn('infusion')">
                   <span class="skip-toggle-check" id="infusion-optout-icon"></span>
-                  <span>Not Ordering</span>
+                  <span>Skip</span>
                 </label>
                 <input type="checkbox" id="infusion-optout" style="display:none" onchange="toggleOptOut('infusion')">
               </div>
@@ -143,25 +143,25 @@
                 <div class="infusion-set-row" id="infusion-row-1">
                   <div class="infusion-set-label" id="infusion-label-1"></div>
                   <div class="infusion-inline-row">
-                    <div class="field-group">
+                    <div class="field-group inf-field-type">
                       <label class="field-label" for="inf-brand-1">Type</label>
                       <select id="inf-brand-1" class="native-select" onchange="handleInfBrandChange(1)"></select>
                     </div>
-                    <div class="field-group">
+                    <div class="field-group inf-field-size">
                       <label class="field-label" for="inf-size-1">Size</label>
                       <select id="inf-size-1" class="native-select" onchange="handleInfSizeChange(1)"></select>
                     </div>
-                    <div class="field-group">
+                    <div class="field-group inf-field-length">
                       <label class="field-label" for="inf-tubing-1">Length</label>
                       <select id="inf-tubing-1" class="native-select"></select>
                     </div>
-                  </div>
-                  <div class="qty-stepper-row">
-                    <span class="qty-label">Boxes</span>
-                    <div class="qty-stepper">
-                      <button class="qty-btn" onclick="stepQty(1, -1)">−</button>
-                      <span class="qty-value" id="inf-qty-1">3</span>
-                      <button class="qty-btn" onclick="stepQty(1, 1)">+</button>
+                    <div class="field-group inf-field-boxes">
+                      <label class="field-label">Boxes</label>
+                      <div class="qty-stepper">
+                        <button class="qty-btn" onclick="stepQty(1, -1)">−</button>
+                        <span class="qty-value" id="inf-qty-1">3</span>
+                        <button class="qty-btn" onclick="stepQty(1, 1)">+</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -173,25 +173,25 @@
                     <button class="remove-set-btn" onclick="removeSecondSet()">✕ remove</button>
                   </div>
                   <div class="infusion-inline-row">
-                    <div class="field-group">
+                    <div class="field-group inf-field-type">
                       <label class="field-label" for="inf-brand-2">Type</label>
                       <select id="inf-brand-2" class="native-select" onchange="handleInfBrandChange(2)"></select>
                     </div>
-                    <div class="field-group">
+                    <div class="field-group inf-field-size">
                       <label class="field-label" for="inf-size-2">Size</label>
                       <select id="inf-size-2" class="native-select" onchange="handleInfSizeChange(2)"></select>
                     </div>
-                    <div class="field-group">
+                    <div class="field-group inf-field-length">
                       <label class="field-label" for="inf-tubing-2">Length</label>
                       <select id="inf-tubing-2" class="native-select"></select>
                     </div>
-                  </div>
-                  <div class="qty-stepper-row">
-                    <span class="qty-label">Boxes</span>
-                    <div class="qty-stepper">
-                      <button class="qty-btn" onclick="stepQty(2, -1)">−</button>
-                      <span class="qty-value" id="inf-qty-2">0</span>
-                      <button class="qty-btn" onclick="stepQty(2, 1)">+</button>
+                    <div class="field-group inf-field-boxes">
+                      <label class="field-label">Boxes</label>
+                      <div class="qty-stepper">
+                        <button class="qty-btn" onclick="stepQty(2, -1)">−</button>
+                        <span class="qty-value" id="inf-qty-2">0</span>
+                        <button class="qty-btn" onclick="stepQty(2, 1)">+</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -207,13 +207,13 @@
                 <h3>Cartridges</h3>
                 <label class="skip-toggle" id="cartridges-optout-btn" onclick="toggleOptOutBtn('cartridges')">
                   <span class="skip-toggle-check" id="cartridges-optout-icon"></span>
-                  <span>Not Ordering</span>
+                  <span>Skip</span>
                 </label>
                 <input type="checkbox" id="cartridges-optout" style="display:none" onchange="toggleOptOut('cartridges')">
               </div>
               <div class="order-section-body" id="cartridges-body">
                 <div class="field-group">
-                  <label class="field-label" for="cartridge-type-select">Cartridge Type</label>
+                  <label class="field-label" for="cartridge-type-select">Cartridges</label>
                   <select id="cartridge-type-select" class="native-select" disabled></select>
                 </div>
               </div>
@@ -239,7 +239,7 @@
                 <span class="oop-footer-total-amount" id="footer-total">$0.00</span>
                 <span class="oop-footer-total-label">Out-of-Pocket Estimate</span>
               </div>
-              <p class="oop-disclaimer">This is an estimate only and is not a guarantee of your final cost. Actual charges may vary based on your plan's processing.</p>
+              <p class="oop-disclaimer">Estimate only — still in testing. Final charges may vary based on your plan.</p>
             </div>
             <button class="btn-continue" id="step2-continue" onclick="nextStep()">Continue</button>
           </div>
@@ -370,7 +370,7 @@
                 <span class="oop-footer-total-amount" id="review-total">$0.00</span>
                 <span class="oop-footer-total-label">Out-of-Pocket Estimate</span>
               </div>
-              <p class="oop-disclaimer">This is an estimate only and is not a guarantee of your final cost. Actual charges may vary based on your plan's processing.</p>
+              <p class="oop-disclaimer">Estimate only — still in testing. Final charges may vary based on your plan.</p>
             </div>
 
             <div class="step-footer">

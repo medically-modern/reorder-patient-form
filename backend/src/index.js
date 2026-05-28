@@ -225,7 +225,7 @@ app.post("/admin/trigger-reorder-check", async (req, res) => {
 // CONFIRMATION TEXT — sent after patient submits the form
 // ═══════════════════════════════════════════════════════
 
-async function sendConfirmationTextAfterDelay(uid) {
+async function sendConfirmationTextAfterDelay(uid, optOuts = {}) {
   // Wait for Monday writes to settle
   const DELAY_MS = 20_000; // 20 seconds
   console.log(`[sms] Waiting ${DELAY_MS / 1000}s before sending confirmation text for UID ${uid}...`);
@@ -247,12 +247,12 @@ async function sendConfirmationTextAfterDelay(uid) {
     name: details.name,
     address: details.address,
     nextOrder: details.nextOrder,
-    sensorsType: details.sensorsType,
-    suppliesType: details.suppliesType,
-    infusionSet1: details.infusionSet1,
-    infQty1: details.infQty1,
-    infusionSet2: details.infusionSet2,
-    infQty2: details.infQty2,
+    sensorsType: optOuts.sensorsOptOut ? null : details.sensorsType,
+    suppliesType: optOuts.cartridgesOptOut ? null : details.suppliesType,
+    infusionSet1: optOuts.infusionOptOut ? null : details.infusionSet1,
+    infQty1: optOuts.infusionOptOut ? null : details.infQty1,
+    infusionSet2: optOuts.infusionOptOut ? null : details.infusionSet2,
+    infQty2: optOuts.infusionOptOut ? null : details.infQty2,
   });
 
   await sendSMS(details.phone, messageText, { patientName: details.name });
@@ -419,7 +419,13 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
       // ─── Fire-and-forget: send confirmation text after Monday writes settle ───
       // Send for confirm and delay responses (not cancel — patient is leaving)
       if (submission.response === "confirm" || submission.response === "delay") {
-        sendConfirmationTextAfterDelay(req.uid).catch((err) => {
+        // Pass opt-out flags so confirmation text excludes skipped items
+        const optOuts = {
+          sensorsOptOut: submission.orderChanges?.sensorsOptOut || false,
+          cartridgesOptOut: submission.orderChanges?.cartridgesOptOut || false,
+          infusionOptOut: submission.orderChanges?.infusionOptOut || false,
+        };
+        sendConfirmationTextAfterDelay(req.uid, optOuts).catch((err) => {
           console.error(`[sms] Confirmation text failed for UID ${req.uid}:`, err.message);
           notifySmsError(`Confirmation text failed: ${err.message}`, req.uid);
         });
