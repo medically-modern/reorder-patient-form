@@ -142,7 +142,8 @@
                 <div class="infusion-set-row" id="infusion-row-1">
                   <div class="infusion-set-label" id="infusion-label-1">
                     <span class="set-label-text" id="set-label-text-1"></span>
-                    <div class="inf-field-boxes-inline" aria-label="Boxes">
+                    <div class="inf-field-boxes-inline">
+                      <span class="qty-stepper-label">Boxes</span>
                       <button class="qty-btn" onclick="stepQty(1, -1)" aria-label="Decrease boxes">−</button>
                       <span class="qty-value" id="inf-qty-1">3</span>
                       <button class="qty-btn" onclick="stepQty(1, 1)" aria-label="Increase boxes">+</button>
@@ -168,7 +169,8 @@
                 <div class="infusion-set-row hidden" id="infusion-row-2">
                   <div class="infusion-set-label">
                     <span class="set-label-text">Set 2</span>
-                    <div class="inf-field-boxes-inline" aria-label="Boxes">
+                    <div class="inf-field-boxes-inline">
+                      <span class="qty-stepper-label">Boxes</span>
                       <button class="qty-btn" onclick="stepQty(2, -1)" aria-label="Decrease boxes">−</button>
                       <span class="qty-value" id="inf-qty-2">0</span>
                       <button class="qty-btn" onclick="stepQty(2, 1)" aria-label="Increase boxes">+</button>
@@ -196,20 +198,22 @@
               </div>
             </div>
 
-            <!-- Cartridges (matches CGM Sensors layout: H3 + skip toggle, body always visible) -->
-            <div class="order-section" id="section-cartridges">
+            <!-- Cartridges (inline summary: header H3 + selection pill + Skip — no body) -->
+            <div class="order-section cartridge-inline" id="section-cartridges">
               <div class="order-section-header">
-                <h3>Cartridges</h3>
+                <div class="cartridge-header-left">
+                  <h3>Cartridges:</h3>
+                  <span class="cartridge-selection-pill" id="cartridge-selection-pill">—</span>
+                </div>
                 <label class="skip-toggle" id="cartridges-optout-btn" onclick="toggleOptOutBtn('cartridges')">
                   <span class="skip-toggle-check" id="cartridges-optout-icon"></span>
                   <span>Skip</span>
                 </label>
                 <input type="checkbox" id="cartridges-optout" style="display:none" onchange="toggleOptOut('cartridges')">
               </div>
-              <div class="order-section-body" id="cartridges-body">
-                <div class="field-group field-group-no-label">
-                  <select id="cartridge-type-select" class="native-select" disabled></select>
-                </div>
+              <!-- Body retained but hidden so any legacy code that toggles it doesn't error -->
+              <div class="order-section-body" id="cartridges-body" style="display:none">
+                <select id="cartridge-type-select" class="native-select" disabled style="display:none"></select>
               </div>
             </div>
 

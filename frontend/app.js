@@ -193,8 +193,13 @@ function renderOrderOptions() {
   const cartSection = document.getElementById("section-cartridges");
   if (pd.servingSupplies) {
     cartSection.style.display = "";
+    // Write the cartridge type into the inline pill (new layout). Keep
+    // the (hidden) <select> in sync for any legacy code/form reads.
+    const pill = document.getElementById("cartridge-selection-pill");
     const select = document.getElementById("cartridge-type-select");
-    select.innerHTML = `<option selected>${escHtml(pd.suppliesType || "N/A")}</option>`;
+    const cartType = pd.suppliesType || "N/A";
+    if (pill) pill.textContent = cartType;
+    if (select) select.innerHTML = `<option selected>${escHtml(cartType)}</option>`;
   } else {
     cartSection.style.display = "none";
   }

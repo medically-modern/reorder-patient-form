@@ -1198,48 +1198,51 @@ input:disabled {
 
 /* Boxes stepper that sits in the set-label row, right of the "Set 1"
    / "Set 2" text. Compact — label tiny inline next to the buttons. */
-/* Inline qty stepper for Boxes — sits in the Set 1 / Set 2 label
-   row. Designed for minimum vertical footprint: row height = number
-   text height (~18px). Buttons are wider than tall for easy thumb
-   tapping. Absolute positioning (see .infusion-set-label below)
-   locks it dead-center regardless of left/right content. */
+/* Inline Boxes stepper in the Set 1 / Set 2 label row.
+   Layout: [Boxes] [−] [N] [+]
+   Heights / font sizes all match the 'Set 1' / 'Set 2' label text so
+   the row reads as a single coherent line.
+   line-height set explicitly to button-height on the buttons so the
+   +/− glyphs sit visually centered (line-height: 1 was pulling them
+   slightly below center).                                            */
 .inf-field-boxes-inline {
   display: inline-flex;
   align-items: center;
-  gap: 0;
+  gap: 6px;
   margin: 0;
   padding: 0;
-  line-height: 1;
+}
+.qty-stepper-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0;
 }
 .inf-field-boxes-inline .qty-btn {
-  width: 34px;        /* easy tap target horizontally */
-  height: 20px;       /* near-zero vertical chrome */
+  width: 34px;
+  height: 22px;
   padding: 0;
   font-size: 0.95rem;
-  line-height: 1;
+  line-height: 22px;        /* explicit match for glyph-vertical-center */
   font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  text-align: center;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
   cursor: pointer;
   border-radius: 4px;
+  display: inline-block;
 }
-.inf-field-boxes-inline .qty-btn:first-of-type { margin-right: 6px; }
-.inf-field-boxes-inline .qty-btn:last-of-type  { margin-left: 6px; }
 .inf-field-boxes-inline .qty-value {
-  min-width: 16px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1;
+  min-width: 20px;
+  height: 22px;
+  font-size: 0.8rem;        /* matches Set 1 / Set 2 label text */
+  font-weight: 600;
+  line-height: 22px;        /* center vertically same as buttons */
+  text-align: center;
   font-variant-numeric: tabular-nums;
   color: var(--text);
+  display: inline-block;
 }
 
 /* Stepper inside the inline row — match select height */
@@ -1260,6 +1263,36 @@ input:disabled {
   height: auto;
   flex: 1;
   font-size: 0.9rem;
+}
+
+/* ─── Cartridge inline-summary (no body, just header) ─── */
+
+/* Section flattened to a single header row: H3 + selection pill +
+   Skip toggle. The body is kept in DOM (display:none) so any legacy
+   code that flips its class doesn't throw. */
+.cartridge-inline { /* no extra rules — just a tag for future targeting */ }
+
+.cartridge-header-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* The selection text ("Mobi") rendered as a soft accent pill so it
+   reads as a chosen value but is clearly non-editable (no select
+   chrome, no chevron). Uses the primary accent so it pops next to
+   the muted/uppercase H3. */
+.cartridge-selection-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--primary-light);
+  border: 1px solid rgba(11,110,79,0.18);
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
 /* ─── Collapsible cartridge section ─── */
