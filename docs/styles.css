@@ -1229,6 +1229,7 @@ input:disabled {
   display: inline-flex;
   align-items: center;
   gap: 14px;
+  position: relative;        /* anchor for .qty-max-warning */
 }
 .qty-stepper-label {
   font-size: 0.8rem;        /* matches Set 1 / Set 2 label exactly */
@@ -1286,17 +1287,26 @@ input:disabled {
   line-height: 1;
 }
 
-/* Inline max warning ("Max 9 boxes") — fades in next to the stepper
+/* Inline max warning ("Max 9 boxes") — fades in below the stepper
    when the user tries to step past the limit, hides itself after
-   ~2s. Position takes no flow so the stepper position doesn't shift. */
+   ~2s. Absolutely positioned so it never pushes neighbouring
+   layout (the × remove button on Set 2 was getting shoved off-
+   screen by the old inline version).                                */
 .qty-max-warning {
-  font-size: 0.75rem;
-  font-weight: 600;
+  position: absolute;
+  top: calc(100% + 4px);   /* sits just below the stepper row */
+  left: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
   color: var(--danger);
+  background: rgba(239,68,68,0.08);
+  border-radius: 4px;
+  padding: 2px 8px;
   opacity: 0;
   transition: opacity 200ms ease;
   pointer-events: none;
   white-space: nowrap;
+  z-index: 5;
 }
 .qty-max-warning.show {
   opacity: 1;
