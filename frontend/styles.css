@@ -593,24 +593,38 @@ input:disabled {
   border-bottom: none;
 }
 
-/* 3-column grid:
-     [Set 1/Set 2 text  |  Boxes (centered)  |  ✕ remove / empty]
-   Boxes always sits in the visual middle, matching from row to row.
-   Set 1 has no left text (empty span) and no right button — but the
-   empty grid cells preserve the middle column's center alignment.   */
+/* Label row uses flex for the left text + right ✕ button, but the
+   Boxes stepper is absolutely positioned dead-center via left:50%
+   + translateX(-50%). That way Set 1 and Set 2 rows render Boxes
+   at the SAME X coordinate no matter what (or how much) text is on
+   the left, and no matter whether the right ✕ button is present.   */
 .infusion-set-label {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  position: relative;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
+  min-height: 22px;
   margin-bottom: 0.375rem;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-secondary);
 }
-.set-label-text { justify-self: start; }
-.infusion-set-label .inf-field-boxes-inline { justify-self: center; }
-.infusion-set-label .remove-set-btn { justify-self: end; }
+.infusion-set-label .inf-field-boxes-inline {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+/* Ensure the left text never collides into the centered Boxes */
+.set-label-text {
+  flex: 0 0 auto;
+  padding-right: 80px;  /* reserve space for the centered stepper */
+}
+.set-label-text:empty { padding: 0; }
+.infusion-set-label .remove-set-btn {
+  flex: 0 0 auto;
+  padding-left: 80px;
+}
 
 .remove-set-btn {
   background: none;
@@ -1184,47 +1198,48 @@ input:disabled {
 
 /* Boxes stepper that sits in the set-label row, right of the "Set 1"
    / "Set 2" text. Compact — label tiny inline next to the buttons. */
+/* Inline qty stepper for Boxes — sits in the Set 1 / Set 2 label
+   row. Designed for minimum vertical footprint: row height = number
+   text height (~18px). Buttons are wider than tall for easy thumb
+   tapping. Absolute positioning (see .infusion-set-label below)
+   locks it dead-center regardless of left/right content. */
 .inf-field-boxes-inline {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  margin: 0;
-}
-.inf-field-boxes-inline .field-label {
-  font-size: 0.7rem;
-  margin: 0;
-  color: var(--text-muted);
-}
-.inf-field-boxes-inline .qty-stepper {
   display: inline-flex;
   align-items: center;
-  border-radius: 6px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  background: var(--card-bg);
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  line-height: 1;
 }
 .inf-field-boxes-inline .qty-btn {
-  width: 36px;       /* wider so it's easier to tap on phone */
-  height: 22px;      /* but shorter so the row stays compact */
-  font-size: 1rem;
+  width: 34px;        /* easy tap target horizontally */
+  height: 20px;       /* near-zero vertical chrome */
+  padding: 0;
+  font-size: 0.95rem;
   line-height: 1;
+  font-weight: 600;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--bg);
-  border: none;
+  border: 1px solid var(--border);
   color: var(--text);
   cursor: pointer;
+  border-radius: 4px;
 }
+.inf-field-boxes-inline .qty-btn:first-of-type { margin-right: 6px; }
+.inf-field-boxes-inline .qty-btn:last-of-type  { margin-left: 6px; }
 .inf-field-boxes-inline .qty-value {
-  width: 28px;       /* a bit wider so 2-digit numbers don't crowd */
-  height: 22px;
+  min-width: 16px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
 /* Stepper inside the inline row — match select height */
