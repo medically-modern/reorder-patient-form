@@ -121,8 +121,7 @@
                 <input type="checkbox" id="sensors-optout" style="display:none" onchange="toggleOptOut('sensors')">
               </div>
               <div class="order-section-body" id="sensors-body">
-                <div class="field-group">
-                  <label class="field-label" for="sensor-type-select">CGM Type</label>
+                <div class="field-group field-group-no-label">
                   <select id="sensor-type-select" class="native-select"></select>
                 </div>
               </div>
@@ -215,10 +214,8 @@
                 <input type="checkbox" id="cartridges-optout" style="display:none" onchange="toggleOptOut('cartridges')">
               </div>
               <div class="order-section-body collapsed" id="cartridges-body">
-                <div class="field-group">
-                  <label class="field-label" for="cartridge-type-select">Cartridges</label>
-                  <select id="cartridge-type-select" class="native-select" disabled></select>
-                </div>
+                <p class="cartridge-info">Cartridges (Mobi) — quantity is set automatically.</p>
+                <select id="cartridge-type-select" class="native-select" style="display:none" disabled></select>
               </div>
             </div>
 
@@ -242,7 +239,7 @@
                 <span class="oop-footer-total-amount" id="footer-total">$0.00</span>
                 <span class="oop-footer-total-label">Out-of-Pocket Estimate</span>
               </div>
-              <p class="oop-disclaimer">Estimate only — still in testing. Final charges may vary based on your plan.</p>
+              <p class="oop-disclaimer">Estimate only — still in testing.<br>Final charges may vary based on your plan.</p>
             </div>
             <button class="btn-continue" id="step2-continue" onclick="nextStep()">Continue</button>
           </div>
@@ -373,7 +370,7 @@
                 <span class="oop-footer-total-amount" id="review-total">$0.00</span>
                 <span class="oop-footer-total-label">Out-of-Pocket Estimate</span>
               </div>
-              <p class="oop-disclaimer">Estimate only — still in testing. Final charges may vary based on your plan.</p>
+              <p class="oop-disclaimer">Estimate only — still in testing.<br>Final charges may vary based on your plan.</p>
             </div>
 
             <div class="step-footer">

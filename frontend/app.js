@@ -1284,7 +1284,7 @@ function applyAddressShrink(el) {
     if (!parent) return;
     const maxWidth = parent.clientWidth - 32; // account for padding
     const minFontSize = 11;
-    const maxFontSize = 24;
+    const maxFontSize = 32;      // bumped from 24 — short addresses now scale up larger
     let fontSize = 16; // start at 1rem
 
     // Force single-line measurement so we only "fit" when truly one line
