@@ -580,6 +580,22 @@ function handleDelayDateChange() {
   document.getElementById("step1-footer").style.display = "";
 }
 
+// ─── Cartridge collapsible toggle ───
+
+function toggleCartridgeBody() {
+  const body = document.getElementById("cartridges-body");
+  const chevron = document.getElementById("cartridge-chevron");
+  if (body.classList.contains("collapsed")) {
+    body.classList.remove("collapsed");
+    body.classList.add("expanded");
+    chevron.classList.add("open");
+  } else {
+    body.classList.remove("expanded");
+    body.classList.add("collapsed");
+    chevron.classList.remove("open");
+  }
+}
+
 // ─── Step 2: Order Details ───
 
 
