@@ -706,16 +706,22 @@ function stepQty(setNum, delta) {
   updateOopFooter();
 }
 
-// Inline "Max N boxes" callout, fades next to the stepper for ~1.8s.
-const _maxWarningTimers = {};
-function showMaxWarning(setNum, max) {
-  const el = document.getElementById(`qty-max-warning-${setNum}`);
+// Shared "Max N boxes" chip in the Infusion Sets header. Both
+// stepQty calls (Set 1 + Set 2) target the same element so the
+// warning surfaces in a predictable spot regardless of which set
+// hit the cap.
+let _maxWarningTimer = null;
+function showMaxWarning(_setNum, max) {
+  const el = document.getElementById("qty-max-warning-header");
   if (!el) return;
   el.textContent = `Max ${max} boxes`;
   el.classList.add("show");
-  clearTimeout(_maxWarningTimers[setNum]);
-  _maxWarningTimers[setNum] = setTimeout(() => {
+  clearTimeout(_maxWarningTimer);
+  _maxWarningTimer = setTimeout(() => {
     el.classList.remove("show");
+    // Clear text so :empty rule kicks in and the chrome collapses,
+    // preventing a tiny pill stub from lingering in the header.
+    el.textContent = "";
   }, 1800);
 }
 

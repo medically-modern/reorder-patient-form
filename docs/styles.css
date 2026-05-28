@@ -1292,24 +1292,43 @@ input:disabled {
    ~2s. Absolutely positioned so it never pushes neighbouring
    layout (the × remove button on Set 2 was getting shoved off-
    screen by the old inline version).                                */
-.qty-max-warning {
-  position: absolute;
-  top: calc(100% + 4px);   /* sits just below the stepper row */
-  left: 0;
+/* Per-set warnings still in the DOM for backwards compat with
+   older JS that may target them, but hidden so they no longer
+   render. All warnings now share a single header chip below. */
+.qty-max-warning { display: none; }
+
+/* Shared "Max N boxes" chip in the Infusion Sets section header,
+   sandwiched between the H3 and the Skip toggle. Fades in for
+   ~1.8s when the user taps + at the cap on either set. Takes its
+   own slot in the header flex so it doesn't push the Skip toggle. */
+.qty-max-warning-header {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  margin: 0 8px;
   font-size: 0.7rem;
   font-weight: 700;
   color: var(--danger);
   background: rgba(239,68,68,0.08);
-  border-radius: 4px;
-  padding: 2px 8px;
+  border: 1px solid rgba(239,68,68,0.18);
+  border-radius: 999px;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
   opacity: 0;
   transition: opacity 200ms ease;
   pointer-events: none;
-  white-space: nowrap;
-  z-index: 5;
+  min-height: 18px;
 }
-.qty-max-warning.show {
+.qty-max-warning-header.show {
   opacity: 1;
+}
+/* Reserve no width when empty so the header layout doesn't shift
+   between idle and warning states. */
+.qty-max-warning-header:empty {
+  padding: 0;
+  margin: 0;
+  border: none;
+  min-height: 0;
 }
 
 /* Stepper inside the inline row — match select height */
