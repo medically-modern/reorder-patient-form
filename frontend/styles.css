@@ -634,18 +634,37 @@ input:disabled {
   margin-left: auto;
 }
 
-/* Multi-set mode: 3-column grid. Boxes always sits centered, so
-   Set 1 and Set 2 align perfectly with each other.                 */
+/* Multi-set mode: row is flex-center (Boxes locks at the row's
+   horizontal midpoint), and the side elements are absolutely
+   positioned so their widths can't shift the centerline. Set 1
+   (no ✕ remove button) and Set 2 (with one) now place Boxes at
+   the SAME X coordinate.                                            */
 .infusion-body.has-second-set .infusion-set-label {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
-.infusion-body.has-second-set .set-label-text { justify-self: start; }
+.infusion-body.has-second-set .set-label-text {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+}
 .infusion-body.has-second-set .set-label-text:empty {
-  display: block;        /* keep the empty cell so column 1 is reserved */
+  display: block;        /* placeholder so JS write works idempotently */
 }
-.infusion-body.has-second-set .inf-field-boxes-inline { justify-self: center; }
-.infusion-body.has-second-set .remove-set-btn { justify-self: end; margin: 0; }
+.infusion-body.has-second-set .inf-field-boxes-inline {
+  margin: 0;             /* let justify-content do the centering */
+}
+.infusion-body.has-second-set .remove-set-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+}
 
 .remove-set-btn {
   background: none;
