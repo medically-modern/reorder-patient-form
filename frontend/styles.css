@@ -623,6 +623,10 @@ input:disabled {
 }
 .set-label-text {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;             /* same height as Boxes/qty-btn for shared baseline */
+  line-height: 1;
 }
 .set-label-text:empty { display: none; }
 .infusion-set-label .remove-set-btn {
@@ -1227,10 +1231,14 @@ input:disabled {
   gap: 14px;
 }
 .qty-stepper-label {
-  font-size: 0.85rem;
+  font-size: 0.8rem;        /* matches Set 1 / Set 2 label exactly */
   font-weight: 600;
+  line-height: 1;           /* same line-box as the stepper buttons */
   color: var(--text-secondary);
   letter-spacing: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;             /* matches qty-btn height so the row centers */
 }
 .inf-field-boxes-inline .qty-stepper {
   display: inline-flex;
@@ -1239,6 +1247,8 @@ input:disabled {
   padding: 0;
   background: transparent;
   border: none;
+  border-radius: 0;         /* override the line 692 stepper rule */
+  overflow: visible;        /* CRITICAL: let button outer borders show */
 }
 .inf-field-boxes-inline .qty-btn {
   width: 38px;       /* a touch bigger for thumb-tap on phone */

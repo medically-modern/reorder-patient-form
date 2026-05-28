@@ -1347,31 +1347,33 @@ function checkApartmentWarning(address) {
 
 function applyAddressShrink(el) {
   if (!el) return;
-  // Reset prior state so a re-call lands cleanly.
   el.style.fontSize = "";
   el.style.wordBreak = "";
   el.style.overflowWrap = "";
 
-  // Disable CSS transition during measurement. The .current-value
-  // .address-text rule has 'transition: font-size 150ms ease' which
-  // means the rendered font-size lags every JS write and scrollWidth
-  // reads a stale layout. The loop then exits early at the wrong
-  // size. Save the inline transition style and restore at the end.
+  // Disable CSS transition during measurement — see history; the
+  // .current-value.address-text rule animates font-size which would
+  // make scrollWidth read stale layout in our tight loop.
   const prevTransition = el.style.transition;
   el.style.transition = "none";
 
-  // Defer with two rAFs so the browser fully commits layout before
-  // we measure. One rAF can fire before the parent's clientWidth is
-  // populated (notably when Step 3's panel is off-screen via
-  // translateX at app-init time). Two rAFs guarantees we read a
-  // settled layout.
   const measure = () => {
     const parent = el.parentElement;
     if (!parent) return;
 
-    // If parent isn't laid out yet (off-screen panel at init), retry
-    // on the next frame. Bail after a few attempts so we never spin.
-    if (parent.clientWidth < 50 && (el.__shrinkRetries || 0) < 5) {
+    // Layout sanity: try clientWidth, then bounding rect, then a
+    // viewport fallback. The grow-from-16 approach was failing on
+    // some patients because scrollWidth at 16px was reading slightly
+    // below maxWidth and the loop bailed out at ~16.5-18px.
+    let containerWidth = parent.clientWidth;
+    if (containerWidth < 100) {
+      containerWidth = parent.getBoundingClientRect().width;
+    }
+    if (containerWidth < 100) {
+      containerWidth = window.innerWidth - 24;
+    }
+    if (containerWidth < 100 && (el.__shrinkRetries || 0) < 5) {
+      // layout truly not committed — try again next frame
       el.__shrinkRetries = (el.__shrinkRetries || 0) + 1;
       requestAnimationFrame(measure);
       return;
@@ -1380,35 +1382,29 @@ function applyAddressShrink(el) {
 
     const cs = getComputedStyle(parent);
     const padX = parseFloat(cs.paddingLeft || 0) + parseFloat(cs.paddingRight || 0);
-    const maxWidth = parent.clientWidth - padX - 4; // 4px safety against rounding
+    const maxWidth = containerWidth - padX - 4;
+
     const minFontSize = 11;
-    const maxFontSize = 64; // generous ceiling; loop stops on width-fill
-    let fontSize = 16;
+    const maxFontSize = 64;
 
     el.style.whiteSpace = "nowrap";
     el.style.overflow = "hidden";
+
+    // SHRINK from max. Strategy: start at the ceiling — at 64px any
+    // address will overflow — then shrink in 0.5px steps until it
+    // just fits. This guarantees the text fills the width up to
+    // maxFontSize, rather than terminating early at some random
+    // mid-loop size. Much more reliable than grow-from-16.
+    let fontSize = maxFontSize;
     el.style.fontSize = fontSize + "px";
 
-    if (el.scrollWidth > maxWidth) {
-      while (el.scrollWidth > maxWidth && fontSize > minFontSize) {
-        fontSize -= 0.5;
-        el.style.fontSize = fontSize + "px";
-      }
-    } else {
-      // Grow until adding another 0.5px would overflow.
-      while (fontSize < maxFontSize) {
-        fontSize += 0.5;
-        el.style.fontSize = fontSize + "px";
-        if (el.scrollWidth > maxWidth) {
-          fontSize -= 0.5;
-          el.style.fontSize = fontSize + "px";
-          break;
-        }
-      }
+    let guard = 200; // safety: never spin forever
+    while (el.scrollWidth > maxWidth && fontSize > minFontSize && guard-- > 0) {
+      fontSize -= 0.5;
+      el.style.fontSize = fontSize + "px";
     }
 
     el.style.textOverflow = "ellipsis";
-    // Restore CSS transition for future user-triggered size changes
     el.style.transition = prevTransition;
   };
 
