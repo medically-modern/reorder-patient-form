@@ -580,6 +580,22 @@ function handleDelayDateChange() {
   document.getElementById("step1-footer").style.display = "";
 }
 
+// ─── Cartridge collapsible toggle ───
+
+function toggleCartridgeBody() {
+  const body = document.getElementById("cartridges-body");
+  const chevron = document.getElementById("cartridge-chevron");
+  if (body.classList.contains("collapsed")) {
+    body.classList.remove("collapsed");
+    body.classList.add("expanded");
+    chevron.classList.add("open");
+  } else {
+    body.classList.remove("expanded");
+    body.classList.add("collapsed");
+    chevron.classList.remove("open");
+  }
+}
+
 // ─── Step 2: Order Details ───
 
 
@@ -900,7 +916,7 @@ function renderReview() {
   }
   if (state.sensorsOptOut && pd.servingSensors) {
     hasChanges = true;
-    html += reviewItem("Sensors", state.initialSensorType || "Ordered", "Not ordering this time");
+    html += reviewItem("CGM Sensors", state.initialSensorType || "Ordered", "Skipping this order");
   }
 
   if (!state.infusionOptOut && (pd.servingInfusionSet1 || pd.servingInfusionSet2)) {
@@ -926,7 +942,13 @@ function renderReview() {
   }
   if (state.infusionOptOut && (pd.servingInfusionSet1 || pd.servingInfusionSet2)) {
     hasChanges = true;
-    html += reviewItem("Infusion sets", "Ordered", "Not ordering this time");
+    html += reviewItem("Infusion Sets", "Ordered", "Skipping this order");
+  }
+
+  // Cartridges opt-out
+  if (state.cartridgesOptOut && pd.servingSupplies) {
+    hasChanges = true;
+    html += reviewItem("Cartridges", pd.suppliesType || "Ordered", "Skipping this order");
   }
 
   // Address
@@ -1101,6 +1123,13 @@ function buildSubmission() {
     }
   }
 
+  if (pd.servingSupplies) {
+    if (state.cartridgesOptOut) {
+      orderChanges.suppliesType = null;
+      orderChanges.cartridgesOptOut = true;
+    }
+  }
+
   if (pd.servingInfusionSet1) {
     if (state.infusionOptOut) {
       orderChanges.infusionSet1 = null;
@@ -1247,27 +1276,30 @@ function checkApartmentWarning(address) {
 function applyAddressShrink(el) {
   // Reset to default size first
   el.style.fontSize = "";
-  el.style.wordBreak = "break-word";
-  el.style.overflowWrap = "break-word";
-  // Wait for render, then scale text to fill available width
+  el.style.wordBreak = "";
+  el.style.overflowWrap = "";
+  // Wait for render, then scale text to fill available width on ONE line
   requestAnimationFrame(() => {
     const parent = el.parentElement;
     if (!parent) return;
     const maxWidth = parent.clientWidth - 32; // account for padding
-    const baseFontSize = 16; // 1rem
     const minFontSize = 11;
     const maxFontSize = 24;
-    let fontSize = baseFontSize;
+    let fontSize = 16; // start at 1rem
+
+    // Force single-line measurement so we only "fit" when truly one line
+    el.style.whiteSpace = "nowrap";
+    el.style.overflow = "hidden";
     el.style.fontSize = fontSize + "px";
 
     if (el.scrollWidth > maxWidth) {
-      // Shrink for long addresses
+      // Shrink until it fits on one line
       while (el.scrollWidth > maxWidth && fontSize > minFontSize) {
         fontSize -= 0.5;
         el.style.fontSize = fontSize + "px";
       }
     } else {
-      // Scale up for short addresses until we approach maxWidth
+      // Grow for short addresses until we approach maxWidth
       while (fontSize < maxFontSize) {
         fontSize += 0.5;
         el.style.fontSize = fontSize + "px";
@@ -1278,6 +1310,9 @@ function applyAddressShrink(el) {
         }
       }
     }
+
+    // Keep nowrap + hidden so text stays on one line and clips if needed
+    el.style.textOverflow = "ellipsis";
   });
 }
 
