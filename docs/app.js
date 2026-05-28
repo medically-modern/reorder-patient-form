@@ -197,7 +197,7 @@ function renderOrderOptions() {
     // the (hidden) <select> in sync for any legacy code/form reads.
     const pill = document.getElementById("cartridge-selection-pill");
     const select = document.getElementById("cartridge-type-select");
-    const cartType = pd.suppliesType || "N/A";
+    const cartType = pd.suppliesType || "Mobi";
     if (pill) pill.textContent = cartType;
     if (select) select.innerHTML = `<option selected>${escHtml(cartType)}</option>`;
   } else {
@@ -661,15 +661,31 @@ function stepQty(setNum, delta) {
   let newVal = current + delta;
   newVal = Math.max(0, newVal);
 
-  // Always enforce combined max (set1 + set2 never exceeds combinedMax)
   const roomLeft = combinedMax - other;
+  // Detect a clamped-up + tap so we can surface a brief Max warning
+  // alongside the disabled-button visual.
+  const cappedAtMax = delta > 0 && newVal > roomLeft;
   newVal = Math.min(newVal, roomLeft);
   newVal = Math.max(0, newVal);
 
   state[key] = newVal;
   document.getElementById(`inf-qty-${setNum}`).textContent = String(newVal);
+  if (cappedAtMax) showMaxWarning(setNum, combinedMax);
   updateQtyButtons();
   updateOopFooter();
+}
+
+// Inline "Max N boxes" callout, fades next to the stepper for ~1.8s.
+const _maxWarningTimers = {};
+function showMaxWarning(setNum, max) {
+  const el = document.getElementById(`qty-max-warning-${setNum}`);
+  if (!el) return;
+  el.textContent = `Max ${max} boxes`;
+  el.classList.add("show");
+  clearTimeout(_maxWarningTimers[setNum]);
+  _maxWarningTimers[setNum] = setTimeout(() => {
+    el.classList.remove("show");
+  }, 1800);
 }
 
 function isHighCapInsurance() {
@@ -713,6 +729,8 @@ function addSecondSet() {
   document.getElementById("add-set-link").classList.add("hidden");
   document.getElementById("set-label-text-1").textContent = "Set 1";
   document.getElementById("inf-qty-2").textContent = "0";
+  const body = document.getElementById("infusion-body");
+  if (body) body.classList.add("has-second-set");
 
   // Populate set 2 dropdowns
   populateInfusionDropdowns(2, "");
@@ -725,6 +743,8 @@ function removeSecondSet() {
   document.getElementById("infusion-row-2").classList.add("hidden");
   document.getElementById("add-set-link").classList.remove("hidden");
   document.getElementById("set-label-text-1").textContent = "";
+  const body = document.getElementById("infusion-body");
+  if (body) body.classList.remove("has-second-set");
   updateQtyButtons();
   updateOopFooter();
 }
