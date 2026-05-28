@@ -437,6 +437,14 @@ function goToStep(step) {
   const track = document.getElementById("wizard-track");
   track.style.transform = `translateX(-${(step - 1) * 100}%)`;
 
+  // Re-fit the address font on Step 3 every time we land on it —
+  // layout settles only once the panel is on-screen, so the init-time
+  // measurement can be wrong. Cheap to re-run (single tight loop).
+  if (step === 3) {
+    const addressEl = document.getElementById("current-address-display");
+    if (addressEl && addressEl.textContent) applyAddressShrink(addressEl);
+  }
+
   updateStepIndicator();
 
   // Scroll to top so the new panel content is visible
@@ -1271,38 +1279,56 @@ function checkApartmentWarning(address) {
 }
 
 function applyAddressShrink(el) {
-  // Reset to default size first
+  if (!el) return;
+  // Reset prior state so a re-call lands cleanly.
   el.style.fontSize = "";
   el.style.wordBreak = "";
   el.style.overflowWrap = "";
-  // Wait for render, then scale text to fill available width on ONE line.
-  // Measure the parent's actual computed padding instead of guessing a
-  // 32px constant — that was leaving ~8px on the table after the recent
-  // padding reduction. And bump the ceiling generously so short
-  // addresses really pop instead of stopping at the cap.
-  requestAnimationFrame(() => {
+
+  // Disable CSS transition during measurement. The .current-value
+  // .address-text rule has 'transition: font-size 150ms ease' which
+  // means the rendered font-size lags every JS write and scrollWidth
+  // reads a stale layout. The loop then exits early at the wrong
+  // size. Save the inline transition style and restore at the end.
+  const prevTransition = el.style.transition;
+  el.style.transition = "none";
+
+  // Defer with two rAFs so the browser fully commits layout before
+  // we measure. One rAF can fire before the parent's clientWidth is
+  // populated (notably when Step 3's panel is off-screen via
+  // translateX at app-init time). Two rAFs guarantees we read a
+  // settled layout.
+  const measure = () => {
     const parent = el.parentElement;
     if (!parent) return;
+
+    // If parent isn't laid out yet (off-screen panel at init), retry
+    // on the next frame. Bail after a few attempts so we never spin.
+    if (parent.clientWidth < 50 && (el.__shrinkRetries || 0) < 5) {
+      el.__shrinkRetries = (el.__shrinkRetries || 0) + 1;
+      requestAnimationFrame(measure);
+      return;
+    }
+    el.__shrinkRetries = 0;
+
     const cs = getComputedStyle(parent);
     const padX = parseFloat(cs.paddingLeft || 0) + parseFloat(cs.paddingRight || 0);
-    const maxWidth = parent.clientWidth - padX - 2; // 2px safety against rounding
+    const maxWidth = parent.clientWidth - padX - 4; // 4px safety against rounding
     const minFontSize = 11;
-    const maxFontSize = 56;      // generous ceiling; loop stops on width-fill not cap
-    let fontSize = 16; // start at 1rem
+    const maxFontSize = 64; // generous ceiling; loop stops on width-fill
+    let fontSize = 16;
 
-    // Force single-line measurement so we only "fit" when truly one line
     el.style.whiteSpace = "nowrap";
     el.style.overflow = "hidden";
     el.style.fontSize = fontSize + "px";
 
     if (el.scrollWidth > maxWidth) {
-      // Shrink until it fits on one line
       while (el.scrollWidth > maxWidth && fontSize > minFontSize) {
         fontSize -= 0.5;
         el.style.fontSize = fontSize + "px";
       }
     } else {
-      // Grow for short addresses until we approach maxWidth
+      // Grow until adding another 0.5px would overflow.
       while (fontSize < maxFontSize) {
         fontSize += 0.5;
         el.style.fontSize = fontSize + "px";
@@ -1314,9 +1340,12 @@ function applyAddressShrink(el) {
       }
     }
 
-    // Keep nowrap + hidden so text stays on one line and clips if needed
     el.style.textOverflow = "ellipsis";
-  });
+    // Restore CSS transition for future user-triggered size changes
+    el.style.transition = prevTransition;
+  };
+
+  requestAnimationFrame(() => requestAnimationFrame(measure));
 }
 
 function simplifyInsurance(raw) {
