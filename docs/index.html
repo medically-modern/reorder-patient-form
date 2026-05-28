@@ -202,20 +202,17 @@
               </div>
             </div>
 
-            <!-- Cartridges (collapsible, starts collapsed) -->
+            <!-- Cartridges (matches CGM Sensors layout: H3 + skip toggle, body always visible) -->
             <div class="order-section" id="section-cartridges">
               <div class="order-section-header">
-                <div class="cartridge-toggle-header" onclick="toggleCartridgeBody()">
-                  <span class="cartridge-chevron" id="cartridge-chevron">▶</span>
-                  <h3>Cartridges</h3>
-                </div>
+                <h3>Cartridges</h3>
                 <label class="skip-toggle" id="cartridges-optout-btn" onclick="toggleOptOutBtn('cartridges')">
                   <span class="skip-toggle-check" id="cartridges-optout-icon"></span>
                   <span>Skip</span>
                 </label>
                 <input type="checkbox" id="cartridges-optout" style="display:none" onchange="toggleOptOut('cartridges')">
               </div>
-              <div class="order-section-body collapsed" id="cartridges-body">
+              <div class="order-section-body" id="cartridges-body">
                 <div class="field-group">
                   <label class="field-label" for="cartridge-type-select">Cartridges</label>
                   <select id="cartridge-type-select" class="native-select" disabled></select>

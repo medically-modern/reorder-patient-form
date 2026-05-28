@@ -580,21 +580,13 @@ function handleDelayDateChange() {
   document.getElementById("step1-footer").style.display = "";
 }
 
-// ─── Cartridge collapsible toggle ───
+// ─── Cartridge collapsible toggle (REMOVED) ───
+// Cartridges section now matches CGM Sensors layout — H3 + skip
+// toggle in the header, body always visible. Function kept as a
+// no-op so any stale cached HTML calling onclick="toggleCartridgeBody"
+// doesn't ReferenceError.
 
-function toggleCartridgeBody() {
-  const body = document.getElementById("cartridges-body");
-  const chevron = document.getElementById("cartridge-chevron");
-  if (body.classList.contains("collapsed")) {
-    body.classList.remove("collapsed");
-    body.classList.add("expanded");
-    chevron.classList.add("open");
-  } else {
-    body.classList.remove("expanded");
-    body.classList.add("collapsed");
-    chevron.classList.remove("open");
-  }
-}
+function toggleCartridgeBody() { /* no-op — section no longer collapses */ }
 
 // ─── Step 2: Order Details ───
 
