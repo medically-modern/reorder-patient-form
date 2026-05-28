@@ -412,9 +412,17 @@ async function processReorderSubmission(uid, submission) {
   if (submission.orderChanges) {
     const oc = submission.orderChanges;
 
+    // CGM Qty — 0 on skip, 3 (default) otherwise
+    if (oc.sensorsOptOut) {
+      tasks.push({ label: "CGM Qty (skip)", fn: () => writeNumber(itemId, COLUMNS.CGM_QTY, 0) });
+      changeSummaryParts.push(`Patient skipped CGM sensors this order.`);
+    } else {
+      tasks.push({ label: "CGM Qty (default)", fn: () => writeNumber(itemId, COLUMNS.CGM_QTY, 3) });
+    }
+
     // Sensors type
     if (oc.sensorsOptOut) {
-      changeSummaryParts.push(`Patient skipped CGM sensors this order.`);
+      // already logged above
     } else if (oc.sensorsType !== undefined && oc.sensorsType !== null) {
       const currentVal = col(COLUMNS.SENSORS_TYPE);
       if (norm(oc.sensorsType) !== norm(currentVal)) {
@@ -428,9 +436,17 @@ async function processReorderSubmission(uid, submission) {
       }
     }
 
+    // Cartridge Qty — 0 on skip, 3 (default) otherwise
+    if (oc.cartridgesOptOut) {
+      tasks.push({ label: "Cartridge Qty (skip)", fn: () => writeNumber(itemId, COLUMNS.CARTRIDGE_QTY, 0) });
+      changeSummaryParts.push(`Patient skipped cartridges this order.`);
+    } else {
+      tasks.push({ label: "Cartridge Qty (default)", fn: () => writeNumber(itemId, COLUMNS.CARTRIDGE_QTY, 3) });
+    }
+
     // Supplies type (cartridges)
     if (oc.cartridgesOptOut) {
-      changeSummaryParts.push(`Patient skipped cartridges this order.`);
+      // already logged above
     } else if (oc.suppliesType !== undefined && oc.suppliesType !== null) {
       const currentVal = col(COLUMNS.SUPPLIES_TYPE);
       if (norm(oc.suppliesType) !== norm(currentVal)) {
@@ -444,8 +460,10 @@ async function processReorderSubmission(uid, submission) {
       }
     }
 
-    // Infusion Sets
+    // Infusion Sets — write 0 qty on skip
     if (oc.infusionOptOut) {
+      tasks.push({ label: "Infusion Qty 1 (skip)", fn: () => writeNumber(itemId, COLUMNS.INF_QTY_1, 0) });
+      tasks.push({ label: "Infusion Qty 2 (skip)", fn: () => writeNumber(itemId, COLUMNS.INF_QTY_2, 0) });
       changeSummaryParts.push(`Patient skipped infusion sets this order.`);
     }
 

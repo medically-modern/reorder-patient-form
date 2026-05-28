@@ -45,7 +45,9 @@ const COLUMNS = {
 
   // Order details
   SENSORS_TYPE:     "color_mkxmdscr",     // FreeStyle Libre 3 Plus, Dexcom G7, etc.
+  CGM_QTY:          "numeric_mm3sr332",   // CGM sensor boxes (default 3, 0 = skipped)
   SUPPLIES_TYPE:    "color_mkxmnheg",     // t:slim, Omnipod, Mobi, etc.
+  CARTRIDGE_QTY:    "numeric_mm3sfe56",   // Cartridge boxes (default 3, 0 = skipped)
   INFUSION_SET_1:   "color_mkxm50f9",
   INF_QTY_1:        "numeric_mkw839ks",
   INFUSION_SET_2:   "color_mkxmx5wk",
