@@ -1153,9 +1153,9 @@ input:disabled {
 }
 
 /* Flex distribution: Type gets more room, Size/Length shrink */
-.inf-field-type { flex: 2; min-width: 0; }
-.inf-field-size { flex: 1; min-width: 0; }
-.inf-field-length { flex: 1; min-width: 0; }
+.inf-field-type { flex: 1.6; min-width: 0; }
+.inf-field-size { flex: 1.1; min-width: 0; }
+.inf-field-length { flex: 1.1; min-width: 0; }
 .inf-field-boxes { flex: 0 0 auto; min-width: 0; }
 
 /* Stepper inside the inline row — match select height */
@@ -1220,9 +1220,9 @@ input:disabled {
 }
 
 /* Flex distribution: Type gets more room, Size/Length shrink */
-.inf-field-type { flex: 2; min-width: 0; }
-.inf-field-size { flex: 1; min-width: 0; }
-.inf-field-length { flex: 1; min-width: 0; }
+.inf-field-type { flex: 1.6; min-width: 0; }
+.inf-field-size { flex: 1.1; min-width: 0; }
+.inf-field-length { flex: 1.1; min-width: 0; }
 .inf-field-boxes { flex: 0 0 auto; min-width: 0; }
 
 /* Shrink stepper when inside the inline row */
