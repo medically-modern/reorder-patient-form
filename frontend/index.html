@@ -144,9 +144,12 @@
                     <span class="set-label-text" id="set-label-text-1"></span>
                     <div class="inf-field-boxes-inline">
                       <span class="qty-stepper-label">Boxes</span>
-                      <button class="qty-btn" onclick="stepQty(1, -1)" aria-label="Decrease boxes">−</button>
-                      <span class="qty-value" id="inf-qty-1">3</span>
-                      <button class="qty-btn" onclick="stepQty(1, 1)" aria-label="Increase boxes">+</button>
+                      <div class="qty-stepper">
+                        <button class="qty-btn" onclick="stepQty(1, -1)" aria-label="Decrease boxes">−</button>
+                        <span class="qty-value" id="inf-qty-1">3</span>
+                        <button class="qty-btn" onclick="stepQty(1, 1)" aria-label="Increase boxes">+</button>
+                      </div>
+                      <span class="qty-max-warning" id="qty-max-warning-1" aria-live="polite"></span>
                     </div>
                   </div>
                   <div class="infusion-inline-row">
@@ -171,9 +174,12 @@
                     <span class="set-label-text">Set 2</span>
                     <div class="inf-field-boxes-inline">
                       <span class="qty-stepper-label">Boxes</span>
-                      <button class="qty-btn" onclick="stepQty(2, -1)" aria-label="Decrease boxes">−</button>
-                      <span class="qty-value" id="inf-qty-2">0</span>
-                      <button class="qty-btn" onclick="stepQty(2, 1)" aria-label="Increase boxes">+</button>
+                      <div class="qty-stepper">
+                        <button class="qty-btn" onclick="stepQty(2, -1)" aria-label="Decrease boxes">−</button>
+                        <span class="qty-value" id="inf-qty-2">0</span>
+                        <button class="qty-btn" onclick="stepQty(2, 1)" aria-label="Increase boxes">+</button>
+                      </div>
+                      <span class="qty-max-warning" id="qty-max-warning-2" aria-live="polite"></span>
                     </div>
                     <button class="remove-set-btn" onclick="removeSecondSet()">✕ remove</button>
                   </div>
@@ -203,7 +209,7 @@
               <div class="order-section-header">
                 <div class="cartridge-header-left">
                   <h3>Cartridges:</h3>
-                  <span class="cartridge-selection-pill" id="cartridge-selection-pill">—</span>
+                  <span class="cartridge-selection-pill" id="cartridge-selection-pill">Mobi</span>
                 </div>
                 <label class="skip-toggle" id="cartridges-optout-btn" onclick="toggleOptOutBtn('cartridges')">
                   <span class="skip-toggle-check" id="cartridges-optout-icon"></span>
