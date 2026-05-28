@@ -214,7 +214,7 @@ function renderOrderOptions() {
       state.hasSecondSet = true;
       document.getElementById("infusion-row-2").classList.remove("hidden");
       document.getElementById("add-set-link").classList.add("hidden");
-      document.getElementById("infusion-label-1").innerHTML = "<span>Set 1</span>";
+      document.getElementById("set-label-text-1").textContent = "Set 1";
       populateInfusionDropdowns(2, pd.infusionSet2);
       state.infQty2 = parseInt(pd.infQty2, 10) || 0;
       document.getElementById("inf-qty-2").textContent = String(state.infQty2);
@@ -706,7 +706,7 @@ function addSecondSet() {
   state.infQty2 = 0;
   document.getElementById("infusion-row-2").classList.remove("hidden");
   document.getElementById("add-set-link").classList.add("hidden");
-  document.getElementById("infusion-label-1").innerHTML = "<span>Set 1</span>";
+  document.getElementById("set-label-text-1").textContent = "Set 1";
   document.getElementById("inf-qty-2").textContent = "0";
 
   // Populate set 2 dropdowns
@@ -719,7 +719,7 @@ function removeSecondSet() {
   state.infQty2 = 0;
   document.getElementById("infusion-row-2").classList.add("hidden");
   document.getElementById("add-set-link").classList.remove("hidden");
-  document.getElementById("infusion-label-1").innerHTML = "";
+  document.getElementById("set-label-text-1").textContent = "";
   updateQtyButtons();
   updateOopFooter();
 }
@@ -1278,13 +1278,19 @@ function applyAddressShrink(el) {
   el.style.fontSize = "";
   el.style.wordBreak = "";
   el.style.overflowWrap = "";
-  // Wait for render, then scale text to fill available width on ONE line
+  // Wait for render, then scale text to fill available width on ONE line.
+  // Measure the parent's actual computed padding instead of guessing a
+  // 32px constant — that was leaving ~8px on the table after the recent
+  // padding reduction. And bump the ceiling generously so short
+  // addresses really pop instead of stopping at the cap.
   requestAnimationFrame(() => {
     const parent = el.parentElement;
     if (!parent) return;
-    const maxWidth = parent.clientWidth - 32; // account for padding
+    const cs = getComputedStyle(parent);
+    const padX = parseFloat(cs.paddingLeft || 0) + parseFloat(cs.paddingRight || 0);
+    const maxWidth = parent.clientWidth - padX - 2; // 2px safety against rounding
     const minFontSize = 11;
-    const maxFontSize = 32;      // bumped from 24 — short addresses now scale up larger
+    const maxFontSize = 56;      // generous ceiling; loop stops on width-fill not cap
     let fontSize = 16; // start at 1rem
 
     // Force single-line measurement so we only "fit" when truly one line

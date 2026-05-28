@@ -140,7 +140,17 @@
               <div class="order-section-body" id="infusion-body">
                 <!-- Set 1 -->
                 <div class="infusion-set-row" id="infusion-row-1">
-                  <div class="infusion-set-label" id="infusion-label-1"></div>
+                  <div class="infusion-set-label" id="infusion-label-1">
+                    <span class="set-label-text" id="set-label-text-1"></span>
+                    <div class="field-group inf-field-boxes-inline">
+                      <label class="field-label">Boxes</label>
+                      <div class="qty-stepper">
+                        <button class="qty-btn" onclick="stepQty(1, -1)">−</button>
+                        <span class="qty-value" id="inf-qty-1">3</span>
+                        <button class="qty-btn" onclick="stepQty(1, 1)">+</button>
+                      </div>
+                    </div>
+                  </div>
                   <div class="infusion-inline-row">
                     <div class="field-group inf-field-type">
                       <label class="field-label" for="inf-brand-1">Type</label>
@@ -154,21 +164,21 @@
                       <label class="field-label" for="inf-tubing-1">Length</label>
                       <select id="inf-tubing-1" class="native-select"></select>
                     </div>
-                    <div class="field-group inf-field-boxes">
-                      <label class="field-label">Boxes</label>
-                      <div class="qty-stepper">
-                        <button class="qty-btn" onclick="stepQty(1, -1)">−</button>
-                        <span class="qty-value" id="inf-qty-1">3</span>
-                        <button class="qty-btn" onclick="stepQty(1, 1)">+</button>
-                      </div>
-                    </div>
                   </div>
                 </div>
 
                 <!-- Set 2 (hidden by default) -->
                 <div class="infusion-set-row hidden" id="infusion-row-2">
                   <div class="infusion-set-label">
-                    <span>Set 2</span>
+                    <span class="set-label-text">Set 2</span>
+                    <div class="field-group inf-field-boxes-inline">
+                      <label class="field-label">Boxes</label>
+                      <div class="qty-stepper">
+                        <button class="qty-btn" onclick="stepQty(2, -1)">−</button>
+                        <span class="qty-value" id="inf-qty-2">0</span>
+                        <button class="qty-btn" onclick="stepQty(2, 1)">+</button>
+                      </div>
+                    </div>
                     <button class="remove-set-btn" onclick="removeSecondSet()">✕ remove</button>
                   </div>
                   <div class="infusion-inline-row">
@@ -183,14 +193,6 @@
                     <div class="field-group inf-field-length">
                       <label class="field-label" for="inf-tubing-2">Length</label>
                       <select id="inf-tubing-2" class="native-select"></select>
-                    </div>
-                    <div class="field-group inf-field-boxes">
-                      <label class="field-label">Boxes</label>
-                      <div class="qty-stepper">
-                        <button class="qty-btn" onclick="stepQty(2, -1)">−</button>
-                        <span class="qty-value" id="inf-qty-2">0</span>
-                        <button class="qty-btn" onclick="stepQty(2, 1)">+</button>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -214,8 +216,10 @@
                 <input type="checkbox" id="cartridges-optout" style="display:none" onchange="toggleOptOut('cartridges')">
               </div>
               <div class="order-section-body collapsed" id="cartridges-body">
-                <p class="cartridge-info">Cartridges (Mobi) — quantity is set automatically.</p>
-                <select id="cartridge-type-select" class="native-select" style="display:none" disabled></select>
+                <div class="field-group">
+                  <label class="field-label" for="cartridge-type-select">Cartridges</label>
+                  <select id="cartridge-type-select" class="native-select" disabled></select>
+                </div>
               </div>
             </div>
 
