@@ -1077,7 +1077,16 @@ function updateOopFooter() {
   if (!state.patientData) return;
 
   const est = getOopEstimate();
-  if (!est || !est.ok || !est.canCalculateCosts) {
+  const summary = document.getElementById("oop-footer-summary");
+
+  if (!est) {
+    if (summary) summary.style.display = "none";
+    return;
+  }
+
+  if (summary) summary.style.display = "";
+
+  if (!est.ok || !est.canCalculateCosts) {
     document.getElementById("footer-deductible").textContent = "—";
     document.getElementById("footer-coinsurance").textContent = "—";
     document.getElementById("footer-total").textContent = "—";
@@ -1091,8 +1100,17 @@ function updateOopFooter() {
 
 function updateReviewOop() {
   const est = getOopEstimate();
+  const container = document.getElementById("review-oop");
   const el = document.getElementById("review-total");
-  if (!est || !est.ok || !est.canCalculateCosts) {
+
+  if (!est) {
+    if (container) container.style.display = "none";
+    return;
+  }
+
+  if (container) container.style.display = "";
+
+  if (!est.ok || !est.canCalculateCosts) {
     el.textContent = "—";
   } else {
     el.textContent = fmt(est.patientOwes || 0);
@@ -1105,6 +1123,9 @@ function getOopEstimate() {
 
   // CareCentrix check
   if ((pd.referralSource || "").toLowerCase().includes("carecentrix")) return null;
+
+  // Horizon BCBS — hide OOP entirely
+  if (pd.primaryInsurance === "Horizon BCBS") return null;
 
   const serving = deriveServing();
   const infusionSets = state.infusionOptOut ? 0 : (state.infQty1 + (state.hasSecondSet ? state.infQty2 : 0));
