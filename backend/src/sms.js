@@ -12,6 +12,8 @@ const { notifySmsError, notifyAuthError } = require("./notify");
 
 let _accessToken = null;
 let _tokenExpiresAt = 0;
+let _authPromise = null;  // Mutex: only one auth call in flight at a time
+let _authCount = 0;       // Track initial vs re-auth for logging
 
 // ─── JWT Grant → Access Token ───
 
@@ -19,6 +21,10 @@ async function authenticate() {
   if (!RC_CLIENT_ID || !RC_CLIENT_SECRET || !RC_JWT) {
     throw new Error("RingCentral credentials not configured (RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT)");
   }
+
+  _authCount++;
+  const isReauth = _authCount > 1;
+  console.log(`[sms] ${isReauth ? "Re-authenticating" : "Initial auth"} with RingCentral (auth #${_authCount})...`);
 
   const basicAuth = Buffer.from(`${RC_CLIENT_ID}:${RC_CLIENT_SECRET}`).toString("base64");
 
@@ -46,7 +52,8 @@ async function authenticate() {
   // Refresh 60 seconds before actual expiry
   _tokenExpiresAt = Date.now() + (data.expires_in - 60) * 1000;
 
-  console.log("[sms] RingCentral authenticated successfully");
+  const ttlMin = Math.round((data.expires_in - 60) / 60);
+  console.log(`[sms] RingCentral authenticated — token valid for ~${ttlMin} min`);
   return _accessToken;
 }
 
@@ -54,7 +61,42 @@ async function getAccessToken() {
   if (_accessToken && Date.now() < _tokenExpiresAt) {
     return _accessToken;
   }
-  return authenticate();
+
+  // Mutex: if an auth call is already in flight, await it instead of firing another
+  if (_authPromise) {
+    console.log("[sms] Auth already in flight — waiting for existing auth call");
+    return _authPromise;
+  }
+
+  _authPromise = authenticate().finally(() => { _authPromise = null; });
+  return _authPromise;
+}
+
+// ─── Retry helper for transient errors ───
+
+async function fetchWithRetry(url, options, { maxRetries = 2, label = "request" } = {}) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, options);
+
+    if (res.ok) return res;
+
+    const body = await res.text();
+
+    // Retryable: 429 (rate limit) or 5xx (server error)
+    const retryable = res.status === 429 || res.status >= 500;
+    if (retryable && attempt < maxRetries) {
+      // Exponential backoff: 1s, 3s
+      const delay = (attempt + 1) * 1500;
+      const retryAfter = res.headers.get("retry-after");
+      const waitMs = retryAfter ? Math.min(parseInt(retryAfter, 10) * 1000, 10000) : delay;
+      console.warn(`[sms] ${label} got ${res.status}, retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})...`);
+      await new Promise((r) => setTimeout(r, waitMs));
+      continue;
+    }
+
+    // Non-retryable or exhausted retries — return the failed response + body
+    return { ok: false, status: res.status, _body: body, headers: res.headers };
+  }
 }
 
 // ─── Send SMS ───
@@ -87,64 +129,63 @@ async function sendSMS(toNumber, messageText, opts = {}) {
   const cleanTo = toNumber.replace(/\D/g, "");
   const e164To = cleanTo.startsWith("1") ? `+${cleanTo}` : `+1${cleanTo}`;
 
+  const smsUrl = `${RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/sms`;
+  const smsBody = JSON.stringify({
+    from: { phoneNumber: RC_FROM_NUMBER },
+    to: [{ phoneNumber: e164To }],
+    text: messageText,
+  });
+
   const token = await getAccessToken();
 
-  const res = await fetch(`${RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/sms`, {
+  const res = await fetchWithRetry(smsUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      from: { phoneNumber: RC_FROM_NUMBER },
-      to: [{ phoneNumber: e164To }],
-      text: messageText,
-    }),
-  });
+    body: smsBody,
+  }, { label: `SMS to ${e164To}` });
 
-  if (!res.ok) {
-    const body = await res.text();
+  if (res.ok) {
+    const data = await res.json();
+    console.log(`[sms] SMS sent to ${e164To}, messageId: ${data.id}`);
+    return { success: true, messageId: data.id };
+  }
 
-    // If 401, token might have expired — retry once with fresh token
-    if (res.status === 401 && _accessToken) {
-      console.warn("[sms] Got 401, re-authenticating and retrying...");
-      _accessToken = null;
-      _tokenExpiresAt = 0;
-      const freshToken = await getAccessToken();
+  const body = res._body || await res.text();
 
-      const retry = await fetch(`${RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/sms`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${freshToken}`,
-        },
-        body: JSON.stringify({
-          from: { phoneNumber: RC_FROM_NUMBER },
-          to: [{ phoneNumber: e164To }],
-          text: messageText,
-        }),
-      });
+  // 401 — token expired or revoked. Force re-auth and retry once.
+  if (res.status === 401) {
+    console.warn("[sms] Got 401, forcing re-auth and retrying...");
+    _accessToken = null;
+    _tokenExpiresAt = 0;
+    const freshToken = await getAccessToken();
 
-      if (!retry.ok) {
-        const retryBody = await retry.text();
-        const retryErr = new Error(`RingCentral SMS failed after re-auth (${retry.status}): ${retryBody}`);
-        await notifySmsError(`SMS to ${e164To} failed after re-auth (${retry.status}): ${retryBody.slice(0, 200)}`);
-        throw retryErr;
-      }
+    const retry = await fetchWithRetry(smsUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${freshToken}`,
+      },
+      body: smsBody,
+    }, { label: `SMS to ${e164To} (re-auth retry)` });
 
+    if (retry.ok) {
       const retryData = await retry.json();
       console.log(`[sms] SMS sent to ${e164To} (after re-auth), messageId: ${retryData.id}`);
       return { success: true, messageId: retryData.id };
     }
 
-    const smsErr = new Error(`RingCentral SMS failed (${res.status}): ${body}`);
-    await notifySmsError(`SMS to ${e164To} failed (${res.status}): ${body.slice(0, 200)}`);
-    throw smsErr;
+    const retryBody = retry._body || await retry.text();
+    const retryErr = new Error(`RingCentral SMS failed after re-auth (${retry.status}): ${retryBody}`);
+    await notifySmsError(`SMS to ${e164To} failed after re-auth (${retry.status}): ${retryBody.slice(0, 200)}`);
+    throw retryErr;
   }
 
-  const data = await res.json();
-  console.log(`[sms] SMS sent to ${e164To}, messageId: ${data.id}`);
-  return { success: true, messageId: data.id };
+  const smsErr = new Error(`RingCentral SMS failed (${res.status}): ${body}`);
+  await notifySmsError(`SMS to ${e164To} failed (${res.status}): ${body.slice(0, 200)}`);
+  throw smsErr;
 }
 
 // ─── Pre-formatted message builders ───
