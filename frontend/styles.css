@@ -889,23 +889,23 @@ input:disabled {
 
 /* ─── Address auto-shrink for long text ─── */
 
-/* Address sizing — viewport-scaled with a comfortable floor + cap.
-   Replaces the JS auto-shrink loop. On a typical iPhone (~390px
-   viewport) this lands around 22-24px. Short addresses render
-   single-line large; long addresses wrap to 2 lines at the same
-   comfortable size — either way the text fills the card visually
-   instead of sitting as a tiny line in a big empty box.            */
+/* Address sizing — capped at the .panel-title size (1.1rem ≈ 17.6px)
+   so the address never looms larger than the 'Shipping Address'
+   header above it. On small viewports falls back to 1rem (16px).
+   Short addresses render single-line at the cap; long addresses
+   wrap, and the JS render path inserts an explicit break after
+   the street segment so the split is street / city-state-zip
+   rather than mid-word.                                            */
 .current-value.address-text {
-  font-size: clamp(1.25rem, 5.5vw, 1.875rem);
-  line-height: 1.3;
+  font-size: clamp(1rem, 4vw, 1.1rem);
+  line-height: 1.35;
   font-weight: 700;
   text-align: center;
   white-space: normal;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  /* Transition kept off so JS overrides don't trigger an animation —
-     not used now but the rule preserves the option. */
+  word-break: normal;       /* don't break mid-word; rely on the JS-inserted line break */
+  overflow-wrap: break-word;
 }
+.current-value.address-text .addr-line { display: block; }
 
 /* Legacy classes the previous shrink logic toggled — kept as
    no-ops in case any cached HTML/JS still references them. */

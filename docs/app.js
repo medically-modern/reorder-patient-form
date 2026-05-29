@@ -152,9 +152,15 @@ function renderWizard() {
   renderOrderOptions();
 
   // Step 3: Address
+  // US-style addresses follow "Street, City, State Zip, Country".
+  // We split on the FIRST comma so line 1 is the street (the most
+  // identity-bearing piece) and line 2 is everything after
+  // (city, state, zip, country). Short addresses without a comma
+  // render as a single line. Avoid mid-word wrap with explicit
+  // line breaks instead of letting CSS wrap arbitrarily.
   const addressEl = document.getElementById("current-address-display");
   const addrText = pd.address || "No address on file";
-  addressEl.textContent = addrText;
+  renderTwoLineAddress(addressEl, addrText);
   applyAddressShrink(addressEl);
   checkApartmentWarning(addrText);
 
@@ -1349,6 +1355,34 @@ function checkApartmentWarning(address) {
   } else {
     warning.classList.remove("hidden");
   }
+}
+
+function renderTwoLineAddress(el, text) {
+  if (!el) return;
+  const trimmed = (text || "").trim();
+  if (!trimmed) { el.textContent = ""; return; }
+  const firstComma = trimmed.indexOf(",");
+  // No comma → single line, just plain text.
+  if (firstComma < 0) {
+    el.textContent = trimmed;
+    return;
+  }
+  const street = trimmed.slice(0, firstComma).trim();
+  const rest   = trimmed.slice(firstComma + 1).trim();
+  // Empty after-comma → also single line.
+  if (!rest) {
+    el.textContent = street;
+    return;
+  }
+  el.innerHTML = ""; // safe reset
+  const l1 = document.createElement("span");
+  l1.className = "addr-line";
+  l1.textContent = street;
+  const l2 = document.createElement("span");
+  l2.className = "addr-line";
+  l2.textContent = rest;
+  el.appendChild(l1);
+  el.appendChild(l2);
 }
 
 function applyAddressShrink(el) {
