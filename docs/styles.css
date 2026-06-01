@@ -14,10 +14,10 @@
   --brand-text: #3D6663;
   --bg: #F8FAFA;
   --surface: #FFFFFF;
-  --text: #1A2B2A;
-  --text-secondary: #5A706E;
-  --text-muted: #8FA3A1;
-  --text-hint: #B0C0BE;
+  --text: #0F1D1C;
+  --text-secondary: #374947;
+  --text-muted: #5A6E6C;
+  --text-hint: #7A8E8C;
   --border: #E2ECEB;
   --border-light: #EFF5F4;
   --border-focus: var(--brand);
@@ -323,3 +323,56 @@ h1, h2, h3, h4 { font-family: 'Plus Jakarta Sans', 'DM Sans', sans-serif; letter
 .edit-section.skipped .add-set-link{opacity:.3;pointer-events:none}
 .product-row.skipped{opacity:.35}
 .product-row.skipped .product-name{text-decoration:line-through}
+
+/* ─── Postpone buttons ─── */
+.postpone-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.postpone-btn{
+  font-family:'DM Sans',sans-serif;font-size:.9rem;font-weight:600;
+  padding:12px 8px;border-radius:var(--radius-sm);border:1.5px solid var(--border);
+  background:var(--bg);color:var(--text);cursor:pointer;transition:all .15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.postpone-btn:hover{border-color:var(--amber);color:var(--amber)}
+.postpone-btn:active{transform:scale(.97)}
+.postpone-btn.selected{
+  border-color:var(--amber);background:var(--amber-bg);color:#92610A;
+  box-shadow:0 0 0 1px var(--amber);font-weight:700;
+}
+
+.postpone-confirm{
+  display:flex;align-items:center;gap:10px;
+  background:var(--amber-bg);border:1px solid var(--amber-border);
+  border-radius:var(--radius-sm);padding:12px 14px;
+  font-size:.9rem;font-weight:600;color:#92610A;line-height:1.4;
+}
+.postpone-confirm i{font-size:20px;color:var(--amber);flex-shrink:0}
+
+/* ─── Max boxes banner (top of items panel) ─── */
+.max-boxes-banner{
+  display:flex;align-items:center;gap:8px;
+  background:var(--danger-bg);border:2px solid var(--danger);
+  border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px;
+  font-size:.9rem;font-weight:700;color:var(--danger);
+  animation:bannerPulse .4s ease;
+}
+.max-boxes-banner i{font-size:20px;flex-shrink:0}
+@keyframes bannerPulse{0%,100%{transform:none}25%{transform:scale(1.01)}50%{transform:scale(.99)}}
+
+/* ─── Address validation error + shake ─── */
+.address-error-big{
+  display:flex;align-items:center;gap:8px;
+  background:var(--danger-bg);border:2px solid var(--danger);
+  border-radius:var(--radius-sm);padding:12px 14px;margin-top:10px;
+  font-size:.88rem;font-weight:700;color:var(--danger);line-height:1.4;
+}
+.address-error-big i{font-size:20px;flex-shrink:0}
+
+.card.shake{animation:cardShake .5s ease}
+@keyframes cardShake{
+  0%,100%{transform:translateX(0)}
+  15%{transform:translateX(-6px)}
+  30%{transform:translateX(5px)}
+  45%{transform:translateX(-4px)}
+  60%{transform:translateX(3px)}
+  75%{transform:translateX(-2px)}
+}

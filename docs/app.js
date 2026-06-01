@@ -537,24 +537,37 @@ function stepQty(setNum, delta) {
   newVal = Math.max(0, newVal);
   state[key] = newVal;
   document.getElementById(`inf-qty-${setNum}`).textContent = String(newVal);
+
+  // Sync to product row in real-time
+  const prodQty = document.getElementById(`prod-inf${setNum}-qty`);
+  const prodUnit = document.getElementById(`prod-inf${setNum}-unit`);
+  if (prodQty) prodQty.textContent = String(newVal);
+  if (prodUnit) prodUnit.textContent = newVal === 1 ? "box" : "boxes";
+
   if (cappedAtMax) showMaxWarning(combinedMax);
   updateQtyButtons();
   updateOop();
 }
 
-let _maxTimer = null;
 function showMaxWarning(max) {
-  const el = document.getElementById("qty-max-warning");
-  if (!el) return;
-  el.textContent = `Max ${max} boxes`;
-  el.classList.add("show");
-  el.classList.remove("hidden");
-  clearTimeout(_maxTimer);
-  _maxTimer = setTimeout(() => { el.classList.remove("show"); }, 1800);
+  const banner = document.getElementById("max-boxes-banner");
+  if (!banner) return;
+  document.getElementById("max-boxes-text").textContent = `Maximum ${max} boxes total across all infusion sets`;
+  banner.classList.remove("hidden");
+  // Re-trigger animation
+  banner.style.animation = "none";
+  banner.offsetHeight; // force reflow
+  banner.style.animation = "";
+}
+
+function hideMaxWarning() {
+  const banner = document.getElementById("max-boxes-banner");
+  if (banner) banner.classList.add("hidden");
 }
 
 function updateQtyButtons() {
   const combinedMax = getCombinedMaxQty();
+  let anyAtCap = false;
   [1, 2].forEach(setNum => {
     const el = document.getElementById(`inf-qty-${setNum}`);
     if (!el) return;
@@ -566,7 +579,10 @@ function updateQtyButtons() {
     const btns = row.querySelectorAll(".stepper-btn");
     if (btns[0]) btns[0].classList.toggle("at-cap", val <= 0);
     if (btns[1]) btns[1].classList.toggle("at-cap", val >= roomLeft);
+    if (val >= roomLeft) anyAtCap = true;
   });
+  // Hide banner when no longer at cap
+  if (!anyAtCap) hideMaxWarning();
 }
 
 function addSecondSet() {
@@ -595,56 +611,34 @@ function removeSecondSet() {
 }
 
 // ═══════════════════════════════════════════════════════
-// DATE CHANGE
+// POSTPONE (1–4 week buttons)
 // ═══════════════════════════════════════════════════════
 
-function handleDelayDateChange() {
-  const dateInput = document.getElementById("delay-date-input");
-  const errorDiv = document.getElementById("delay-date-error");
-  const note20 = document.getElementById("delay-note-20");
-  const dateStr = dateInput.value;
-  if (!dateStr) return;
-
+function selectPostpone(weeks) {
   const pd = state.patientData;
-  const currentOrderDate = pd.nextOrder ? new Date(pd.nextOrder + "T00:00:00") : null;
-  const selectedDate = new Date(dateStr + "T00:00:00");
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const baseDate = pd.nextOrder ? new Date(pd.nextOrder + "T00:00:00") : new Date();
+  const newDate = new Date(baseDate);
+  newDate.setDate(newDate.getDate() + weeks * 7);
 
-  const maxDate = currentOrderDate ? new Date(currentOrderDate) : new Date(today);
-  maxDate.setDate(maxDate.getDate() + 56);
-
-  if (currentOrderDate && selectedDate < currentOrderDate) {
-    errorDiv.textContent = "Sorry, your scheduled order date is the earliest insurance will cover your reorder. Please text/call us if there is an extraordinary situation.";
-    errorDiv.classList.remove("hidden");
-    return;
-  }
-  if (selectedDate > maxDate) {
-    errorDiv.textContent = "Maximum delay is 8 weeks. Need longer? Text us and we'll help.";
-    errorDiv.classList.remove("hidden");
-    return;
-  }
-  if (selectedDate < today) {
-    errorDiv.textContent = "Please select a future date.";
-    errorDiv.classList.remove("hidden");
-    return;
-  }
-
-  errorDiv.classList.add("hidden");
+  const dateStr = newDate.toISOString().split("T")[0];
   state.delayDate = dateStr;
 
-  const diffDays = Math.ceil((selectedDate - today) / (1000 * 60 * 60 * 24));
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((newDate - today) / (1000 * 60 * 60 * 24));
   state.delayLessThan20Days = diffDays < 20;
 
-  if (state.delayLessThan20Days) {
-    note20.classList.remove("hidden");
-  } else {
-    note20.classList.add("hidden");
-  }
+  // Highlight selected button
+  document.querySelectorAll(".postpone-btn").forEach((btn, i) => {
+    btn.classList.toggle("selected", i + 1 === weeks);
+  });
 
-  // Update display
-  const d = new Date(dateStr + "T00:00:00");
-  const dateDisplay = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-  const dayDisplay = d.toLocaleDateString("en-US", { weekday: "long" });
+  // Show confirmation box
+  const dateDisplay = newDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const dayDisplay = newDate.toLocaleDateString("en-US", { weekday: "long" });
+  document.getElementById("postpone-date-text").textContent = `${dateDisplay} (${dayDisplay})`;
+  document.getElementById("postpone-confirm").classList.remove("hidden");
+
+  // Update the main date display
   document.getElementById("order-date-display").textContent = `${dateDisplay} · ${dayDisplay}`;
 }
 
@@ -717,13 +711,7 @@ function fillHelp(text) {
   });
 }
 
-function sendHelpMessage() {
-  const msg = document.getElementById("help-msg").value.trim();
-  if (!msg) return;
-  state.helpMessage = msg;
-  document.getElementById("help-form").style.display = "none";
-  document.getElementById("help-done").classList.remove("hidden");
-}
+// sendHelpMessage removed — help text is captured on form submit
 
 // ═══════════════════════════════════════════════════════
 // OOP ESTIMATE — total only (no deductible/coinsurance)
@@ -773,6 +761,32 @@ function getOopEstimate() {
 // ═══════════════════════════════════════════════════════
 
 async function handleSubmit() {
+  // Validate address if user opened the address panel and typed something
+  const addrPanel = document.getElementById("panel-addr");
+  const addrInput = document.getElementById("address-input");
+  if (addrPanel.classList.contains("open") && addrInput.value.trim() && !state.addressSelectedFromGoogle) {
+    // Show big red error
+    let errEl = document.getElementById("address-error-big");
+    if (!errEl) {
+      errEl = document.createElement("div");
+      errEl.id = "address-error-big";
+      errEl.className = "address-error-big";
+      errEl.innerHTML = '<i class="ti ti-alert-circle"></i><span>You must select an address from the dropdown suggestions. Please type your address and pick one from the list.</span>';
+      addrPanel.appendChild(errEl);
+    }
+    errEl.classList.remove("hidden");
+
+    // Shake the card
+    const addrCard = addrPanel.closest(".card");
+    addrCard.classList.remove("shake");
+    addrCard.offsetHeight; // force reflow
+    addrCard.classList.add("shake");
+
+    // Scroll to it
+    addrCard.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+
   const btn = document.getElementById("submit-btn");
   btn.disabled = true;
   btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Submitting...';
@@ -795,9 +809,10 @@ async function handleSubmit() {
       if (uploadData.urls) submission.insuranceCardUrls = uploadData.urls;
     }
 
-    // Submit help message (will be handled by backend once column exists)
-    if (state.helpMessage) {
-      submission.helpMessage = state.helpMessage;
+    // Capture help message from textarea at submit time
+    const helpMsg = document.getElementById("help-msg")?.value?.trim();
+    if (helpMsg) {
+      submission.helpMessage = helpMsg;
       submission.helpChip = state.helpChip;
     }
 
@@ -947,6 +962,21 @@ function attachAutocomplete() {
       state.addressCoords.lng = place.geometry.location.lng();
     }
     document.getElementById("address-error").classList.add("hidden");
+    // Hide the big red error if it was showing
+    const bigErr = document.getElementById("address-error-big");
+    if (bigErr) bigErr.classList.add("hidden");
+
+    // Update the display card immediately + re-check apt warning
+    const addr = input.value;
+    const fc = addr.indexOf(",");
+    if (fc > 0) {
+      document.getElementById("address-line1").textContent = addr.slice(0, fc).trim();
+      document.getElementById("address-line2").textContent = addr.slice(fc + 1).trim();
+    } else {
+      document.getElementById("address-line1").textContent = addr;
+      document.getElementById("address-line2").textContent = "";
+    }
+    checkApartmentWarning(addr);
   });
 }
 
