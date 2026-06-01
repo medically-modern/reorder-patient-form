@@ -3,402 +3,330 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Medically Modern — Reorder Confirmation</title>
+  <title>Medically Modern — Confirm Your Order</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.7.0/tabler-icons.min.css">
   <link rel="stylesheet" href="styles.css">
-  <meta name="theme-color" content="#0B6E4F">
+  <meta name="theme-color" content="#80adaa">
 </head>
 <body>
 
-  <!-- Loading screen -->
+  <!-- ═══ Loading ═══ -->
   <div id="loading-screen">
-    <div class="spinner"></div>
-    <p>Loading your order details...</p>
+    <div class="loader-ring"></div>
+    <p>Loading your order&hellip;</p>
   </div>
 
-  <!-- Error screen -->
-  <div id="error-screen" style="display:none;">
-    <div class="error-icon">⚠️</div>
+  <!-- ═══ Error ═══ -->
+  <div id="error-screen" class="screen-center" style="display:none">
+    <div class="screen-icon screen-icon--error"><i class="ti ti-alert-triangle"></i></div>
     <h2>Something went wrong</h2>
     <p id="error-message">We couldn't load your information. Please try your link again or contact us.</p>
   </div>
 
-  <!-- Main app (wizard) -->
-  <div id="app" style="display:none;">
+  <!-- ═══ Main app ═══ -->
+  <div id="app" style="display:none">
 
-    <!-- Step Indicator -->
-    <div class="step-indicator" id="step-indicator">
-      <div class="step-track">
-        <div class="step-track-fill" id="step-track-fill"></div>
+    <!-- Brand bar -->
+    <header class="brandbar">
+      <div class="brand">
+        <img src="https://medicallymodern.com/wp-content/uploads/2025/07/imgi_1_default.png" alt="Medically Modern" class="brand-logo">
       </div>
-      <div class="step-circles">
-        <div class="step-circle active" data-step="1" onclick="jumpToStep(1)">
-          <span class="step-num">1</span>
-          <span class="step-check">✓</span>
-        </div>
-        <div class="step-circle" data-step="2" onclick="jumpToStep(2)">
-          <span class="step-num">2</span>
-          <span class="step-check">✓</span>
-        </div>
-        <div class="step-circle" data-step="3" onclick="jumpToStep(3)">
-          <span class="step-num">3</span>
-          <span class="step-check">✓</span>
-        </div>
-        <div class="step-circle" data-step="4" onclick="jumpToStep(4)">
-          <span class="step-num">4</span>
-          <span class="step-check">✓</span>
-        </div>
-        <div class="step-circle" data-step="5" onclick="jumpToStep(5)">
-          <span class="step-num">5</span>
-          <span class="step-check">✓</span>
-        </div>
-      </div>
-      <div class="step-labels">
-        <span>Date</span>
-        <span>Items</span>
-        <span>Address</span>
-        <span>Insurance</span>
-        <span>Confirm</span>
-      </div>
+      <div class="secure-badge"><i class="ti ti-lock"></i> Secure</div>
+    </header>
+
+    <!-- Intro -->
+    <div class="intro">
+      <p class="eyebrow">Order Confirmation</p>
+      <h1 id="patient-greeting">Hey — here's your refill.</h1>
+      <p class="intro-sub">Everything is pre-filled. Tap <strong>Edit</strong> on anything that's changed, then confirm at the bottom.</p>
     </div>
 
-    <!-- Wizard panels container -->
-    <div class="wizard-viewport">
-      <div class="wizard-track" id="wizard-track">
+    <div class="cards-wrap">
 
-        <!-- Step 1: Order Date -->
-        <div class="wizard-panel" id="panel-1">
-          <div class="panel-content">
-            <h2 class="greeting" id="patient-greeting"></h2>
-            <p class="shipping-note">This is the date your order <strong>ships out</strong> — please allow 3–5 business days for delivery.</p>
+      <!-- ═══ 1. SHIP DATE ═══ -->
+      <section class="card" data-accent="amber">
+        <div class="card-head">
+          <span class="card-label"><span class="card-icon"><i class="ti ti-calendar"></i></span> Next ship date</span>
+          <button class="edit-btn" onclick="togglePanel('date', this)"><i class="ti ti-pencil"></i> Edit</button>
+        </div>
+        <div class="card-value" id="order-date-display"></div>
+        <div class="card-sub" id="order-date-sub">Ships this date — allow 3–5 business days for delivery.</div>
 
-            <div class="date-card">
-              <p class="date-card-label">Your next shipment is scheduled for</p>
-              <p class="date-card-value" id="order-date-display"></p>
-              <p class="date-card-day" id="order-date-day"></p>
+        <div class="edit-panel" id="panel-date">
+          <label class="field-label" for="delay-date-input">Reschedule shipment</label>
+          <input type="date" id="delay-date-input" class="form-input">
+          <div class="field-error hidden" id="delay-date-error"></div>
+          <p class="field-hint hidden" id="delay-note-20">Because this date is less than 20 days away, you won't receive another confirmation text.</p>
+        </div>
+      </section>
+
+      <!-- ═══ 2. SUBSCRIPTION ORDER ═══ -->
+      <section class="card" data-accent="green">
+        <div class="card-head">
+          <span class="card-label"><span class="card-icon"><i class="ti ti-package"></i></span> Your order</span>
+          <button class="edit-btn" onclick="togglePanel('items', this)"><i class="ti ti-pencil"></i> Edit</button>
+        </div>
+
+        <!-- Product rows (populated by JS) -->
+        <div class="product-list" id="product-list">
+          <!-- CGM Sensors row -->
+          <div class="product-row" id="prod-sensors" style="display:none">
+            <div class="product-icon product-icon--green"><i class="ti ti-broadcast"></i></div>
+            <div class="product-body">
+              <div class="product-name" id="prod-sensors-name"></div>
             </div>
-
-            <p class="step-question">Confirm order date?</p>
-
-            <div class="decision-buttons">
-              <button class="decision-btn decision-confirm" id="btn-confirm" onclick="selectOrderDecision('confirm')">
-                <span>Confirm</span>
-              </button>
-              <button class="decision-btn decision-delay" id="btn-delay" onclick="selectOrderDecision('delay')">
-                <span>Delay</span>
-              </button>
+            <div class="product-qty">
+              <div class="product-qty-num">90-day</div>
+              <div class="product-qty-unit">supply</div>
             </div>
+          </div>
 
-            <!-- Delay date picker (inline, revealed on Delay tap) -->
-            <div class="delay-picker hidden" id="delay-picker">
-              <label class="field-label" for="delay-date-input">Pick a new ship date</label>
-              <input type="date" id="delay-date-input" class="date-input">
-              <div class="field-error hidden" id="delay-date-error"></div>
-              <p class="delay-note hidden" id="delay-note-20">Because this date is less than 20 days away, you won't receive another confirmation text.</p>
+          <!-- Infusion Set 1 row -->
+          <div class="product-row" id="prod-inf1" style="display:none">
+            <div class="product-icon product-icon--blue"><i class="ti ti-needle"></i></div>
+            <div class="product-body">
+              <div class="product-name" id="prod-inf1-name"></div>
             </div>
+            <div class="product-qty">
+              <div class="product-qty-num" id="prod-inf1-qty">3</div>
+              <div class="product-qty-unit" id="prod-inf1-unit">boxes</div>
+            </div>
+          </div>
 
-            <!-- Continue button for Step 1 -->
-            <div class="step-footer" id="step1-footer" style="display:none;">
-              <button class="btn-continue" onclick="nextStep()">Continue</button>
+          <!-- Infusion Set 2 row -->
+          <div class="product-row" id="prod-inf2" style="display:none">
+            <div class="product-icon product-icon--blue"><i class="ti ti-needle"></i></div>
+            <div class="product-body">
+              <div class="product-name" id="prod-inf2-name"></div>
+            </div>
+            <div class="product-qty">
+              <div class="product-qty-num" id="prod-inf2-qty">0</div>
+              <div class="product-qty-unit" id="prod-inf2-unit">boxes</div>
+            </div>
+          </div>
+
+          <!-- Cartridges row -->
+          <div class="product-row" id="prod-cartridges" style="display:none">
+            <div class="product-icon product-icon--violet"><i class="ti ti-flask"></i></div>
+            <div class="product-body">
+              <div class="product-name" id="prod-cartridges-name"></div>
+              <div class="product-meta">Pump cartridge</div>
+            </div>
+            <div class="product-qty">
+              <div class="product-qty-num">3</div>
+              <div class="product-qty-unit">boxes</div>
             </div>
           </div>
         </div>
 
-        <!-- Step 2: Order Details -->
-        <div class="wizard-panel" id="panel-2">
-          <div class="panel-content">
-            <h2 class="panel-title">Order Details</h2>
+        <!-- Items edit panel -->
+        <div class="edit-panel" id="panel-items">
 
-            <!-- Sensors -->
-            <div class="order-section" id="section-sensors">
-              <div class="order-section-header">
-                <h3>CGM Sensors</h3>
-                <label class="skip-toggle" id="sensors-optout-btn" onclick="toggleOptOutBtn('sensors')">
-                  <span class="skip-toggle-check" id="sensors-optout-icon"></span>
-                  <span>Skip</span>
-                </label>
-                <input type="checkbox" id="sensors-optout" style="display:none" onchange="toggleOptOut('sensors')">
-              </div>
-              <div class="order-section-body" id="sensors-body">
-                <div class="field-group field-group-no-label">
-                  <select id="sensor-type-select" class="native-select"></select>
-                </div>
-              </div>
+          <!-- Sensors -->
+          <div class="edit-section" id="edit-sensors" style="display:none">
+            <div class="edit-section-head">
+              <label class="field-label">CGM Sensor</label>
+              <button class="skip-btn" id="sensors-skip-btn" onclick="toggleSkip('sensors')">Skip this cycle</button>
             </div>
-
-            <!-- Infusion Sets -->
-            <div class="order-section" id="section-infusion">
-              <div class="order-section-header">
-                <h3>Infusion Sets</h3>
-                <span class="qty-max-warning-header" id="qty-max-warning-header" aria-live="polite"></span>
-                <label class="skip-toggle" id="infusion-optout-btn" onclick="toggleOptOutBtn('infusion')">
-                  <span class="skip-toggle-check" id="infusion-optout-icon"></span>
-                  <span>Skip</span>
-                </label>
-                <input type="checkbox" id="infusion-optout" style="display:none" onchange="toggleOptOut('infusion')">
-              </div>
-              <div class="order-section-body" id="infusion-body">
-                <!-- Set 1 -->
-                <div class="infusion-set-row" id="infusion-row-1">
-                  <div class="infusion-set-label" id="infusion-label-1">
-                    <span class="set-label-text" id="set-label-text-1"></span>
-                    <div class="inf-field-boxes-inline">
-                      <span class="qty-stepper-label">Boxes</span>
-                      <div class="qty-stepper">
-                        <button class="qty-btn" onclick="stepQty(1, -1)" aria-label="Decrease boxes">−</button>
-                        <span class="qty-value" id="inf-qty-1">3</span>
-                        <button class="qty-btn" onclick="stepQty(1, 1)" aria-label="Increase boxes">+</button>
-                      </div>
-                      <span class="qty-max-warning" id="qty-max-warning-1" aria-live="polite"></span>
-                    </div>
-                  </div>
-                  <div class="infusion-inline-row">
-                    <div class="field-group inf-field-type">
-                      <label class="field-label" for="inf-brand-1">Type</label>
-                      <select id="inf-brand-1" class="native-select" onchange="handleInfBrandChange(1)"></select>
-                    </div>
-                    <div class="field-group inf-field-size">
-                      <label class="field-label" for="inf-size-1">Size</label>
-                      <select id="inf-size-1" class="native-select" onchange="handleInfSizeChange(1)"></select>
-                    </div>
-                    <div class="field-group inf-field-length">
-                      <label class="field-label" for="inf-tubing-1">Length</label>
-                      <select id="inf-tubing-1" class="native-select"></select>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Set 2 (hidden by default) -->
-                <div class="infusion-set-row hidden" id="infusion-row-2">
-                  <div class="infusion-set-label">
-                    <span class="set-label-text">Set 2</span>
-                    <div class="inf-field-boxes-inline">
-                      <span class="qty-stepper-label">Boxes</span>
-                      <div class="qty-stepper">
-                        <button class="qty-btn" onclick="stepQty(2, -1)" aria-label="Decrease boxes">−</button>
-                        <span class="qty-value" id="inf-qty-2">0</span>
-                        <button class="qty-btn" onclick="stepQty(2, 1)" aria-label="Increase boxes">+</button>
-                      </div>
-                      <span class="qty-max-warning" id="qty-max-warning-2" aria-live="polite"></span>
-                    </div>
-                    <button class="remove-set-btn" onclick="removeSecondSet()">✕ remove</button>
-                  </div>
-                  <div class="infusion-inline-row">
-                    <div class="field-group inf-field-type">
-                      <label class="field-label" for="inf-brand-2">Type</label>
-                      <select id="inf-brand-2" class="native-select" onchange="handleInfBrandChange(2)"></select>
-                    </div>
-                    <div class="field-group inf-field-size">
-                      <label class="field-label" for="inf-size-2">Size</label>
-                      <select id="inf-size-2" class="native-select" onchange="handleInfSizeChange(2)"></select>
-                    </div>
-                    <div class="field-group inf-field-length">
-                      <label class="field-label" for="inf-tubing-2">Length</label>
-                      <select id="inf-tubing-2" class="native-select"></select>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Add second set link -->
-                <a class="add-set-link" id="add-set-link" onclick="addSecondSet()">+ Add a second infusion set</a>
-              </div>
-            </div>
-
-            <!-- Cartridges (inline summary: header H3 + selection pill + Skip — no body) -->
-            <div class="order-section cartridge-inline" id="section-cartridges">
-              <div class="order-section-header">
-                <div class="cartridge-header-left">
-                  <h3>Cartridges:</h3>
-                  <span class="cartridge-selection-pill" id="cartridge-selection-pill">—</span>
-                </div>
-                <label class="skip-toggle" id="cartridges-optout-btn" onclick="toggleOptOutBtn('cartridges')">
-                  <span class="skip-toggle-check" id="cartridges-optout-icon"></span>
-                  <span>Skip</span>
-                </label>
-                <input type="checkbox" id="cartridges-optout" style="display:none" onchange="toggleOptOut('cartridges')">
-              </div>
-              <!-- Body retained but hidden so any legacy code that toggles it doesn't error -->
-              <div class="order-section-body" id="cartridges-body" style="display:none">
-                <select id="cartridge-type-select" class="native-select" disabled style="display:none"></select>
-              </div>
-            </div>
-
-            <!-- Empty state warning -->
-            <div class="empty-warning hidden" id="empty-warning">
-              You haven't selected anything to ship — check at least one section.
-            </div>
-
-          <!-- OOP footer for Step 2 -->
-          <div class="sticky-footer" id="step2-footer">
-            <div class="oop-footer-summary" id="oop-footer-summary">
-              <div class="oop-footer-row">
-                <span>Deductible</span>
-                <span id="footer-deductible">$0.00</span>
-              </div>
-              <div class="oop-footer-row">
-                <span>Co-insurance</span>
-                <span id="footer-coinsurance">$0.00</span>
-              </div>
-              <div class="oop-footer-total">
-                <span class="oop-footer-total-amount" id="footer-total">$0.00</span>
-                <span class="oop-footer-total-label">Out-of-Pocket Estimate</span>
-              </div>
-              <p class="oop-disclaimer">Estimate only — still in testing.<br>Final charges may vary based on your plan.</p>
-            </div>
-            <button class="btn-continue" id="step2-continue" onclick="nextStep()">Continue</button>
+            <select id="sensor-type-select" class="form-select"></select>
           </div>
+
+          <!-- Infusion Set 1 -->
+          <div class="edit-section" id="edit-infusion" style="display:none">
+            <div class="edit-section-head">
+              <label class="field-label" id="inf-section-label">Infusion Set</label>
+              <button class="skip-btn" id="infusion-skip-btn" onclick="toggleSkip('infusion')">Skip this cycle</button>
+            </div>
+
+            <div class="inf-edit-row" id="inf-edit-row-1">
+              <span class="inf-set-tag" id="inf-set-tag-1" style="display:none">Set 1</span>
+              <div class="inf-dropdowns">
+                <div class="inf-field inf-field--brand">
+                  <label class="field-label-sm">Type</label>
+                  <select id="inf-brand-1" class="form-select" onchange="handleInfBrandChange(1)"></select>
+                </div>
+                <div class="inf-field inf-field--size">
+                  <label class="field-label-sm">Size</label>
+                  <select id="inf-size-1" class="form-select" onchange="handleInfSizeChange(1)"></select>
+                </div>
+                <div class="inf-field inf-field--tubing">
+                  <label class="field-label-sm">Length</label>
+                  <select id="inf-tubing-1" class="form-select"></select>
+                </div>
+              </div>
+              <div class="qty-row">
+                <span class="qty-row-label">Boxes</span>
+                <div class="stepper">
+                  <button class="stepper-btn" onclick="stepQty(1, -1)" aria-label="Decrease">−</button>
+                  <span class="stepper-val" id="inf-qty-1">3</span>
+                  <button class="stepper-btn" onclick="stepQty(1, 1)" aria-label="Increase">+</button>
+                </div>
+                <span class="qty-max-chip hidden" id="qty-max-warning" aria-live="polite"></span>
+              </div>
+            </div>
+
+            <!-- Infusion Set 2 -->
+            <div class="inf-edit-row hidden" id="inf-edit-row-2">
+              <span class="inf-set-tag">Set 2</span>
+              <div class="inf-dropdowns">
+                <div class="inf-field inf-field--brand">
+                  <label class="field-label-sm">Type</label>
+                  <select id="inf-brand-2" class="form-select" onchange="handleInfBrandChange(2)"></select>
+                </div>
+                <div class="inf-field inf-field--size">
+                  <label class="field-label-sm">Size</label>
+                  <select id="inf-size-2" class="form-select" onchange="handleInfSizeChange(2)"></select>
+                </div>
+                <div class="inf-field inf-field--tubing">
+                  <label class="field-label-sm">Length</label>
+                  <select id="inf-tubing-2" class="form-select"></select>
+                </div>
+              </div>
+              <div class="qty-row">
+                <span class="qty-row-label">Boxes</span>
+                <div class="stepper">
+                  <button class="stepper-btn" onclick="stepQty(2, -1)" aria-label="Decrease">−</button>
+                  <span class="stepper-val" id="inf-qty-2">0</span>
+                  <button class="stepper-btn" onclick="stepQty(2, 1)" aria-label="Increase">+</button>
+                </div>
+              </div>
+              <button class="remove-set-link" onclick="removeSecondSet()"><i class="ti ti-x"></i> Remove set 2</button>
+            </div>
+
+            <a class="add-set-link" id="add-set-link" onclick="addSecondSet()">+ Add a second infusion set</a>
           </div>
+
+          <!-- Cartridges -->
+          <div class="edit-section" id="edit-cartridges" style="display:none">
+            <div class="edit-section-head">
+              <label class="field-label">Cartridges</label>
+              <button class="skip-btn" id="cartridges-skip-btn" onclick="toggleSkip('cartridges')">Skip this cycle</button>
+            </div>
+            <div class="cartridge-display" id="cartridge-display"></div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ═══ 3. SHIPPING ADDRESS ═══ -->
+      <section class="card" data-accent="blue">
+        <div class="card-head">
+          <span class="card-label"><span class="card-icon"><i class="ti ti-map-pin"></i></span> Shipping address</span>
+          <button class="edit-btn" onclick="togglePanel('addr', this)"><i class="ti ti-pencil"></i> Edit</button>
+        </div>
+        <div class="card-value" id="address-line1"></div>
+        <div class="card-sub" id="address-line2"></div>
+
+        <div class="alert alert--warn hidden" id="apt-warning">
+          <i class="ti ti-alert-triangle"></i>
+          <span>No apartment or unit number detected. If you live in an apartment, tap Edit to add it.</span>
         </div>
 
-        <!-- Step 3: Shipping Address -->
-        <div class="wizard-panel" id="panel-3">
-          <div class="panel-content">
-            <h2 class="panel-title">Shipping Address</h2>
+        <div class="edit-panel" id="panel-addr">
+          <label class="field-label" for="address-input">New address</label>
+          <input type="text" id="address-input" class="form-input" placeholder="Start typing to search..." autocomplete="off">
+          <p class="field-hint">Select your address from the dropdown suggestions.</p>
+          <div class="field-error hidden" id="address-error"></div>
+        </div>
+      </section>
 
-            <div class="current-address-card" id="current-address-card">
-              <p class="current-value address-text" id="current-address-display"></p>
+      <!-- ═══ 4. INSURANCE ═══ -->
+      <section class="card" data-accent="violet">
+        <div class="card-head">
+          <span class="card-label"><span class="card-icon"><i class="ti ti-shield-check"></i></span> Active insurance</span>
+          <button class="edit-btn" onclick="togglePanel('ins', this)"><i class="ti ti-pencil"></i> Edit</button>
+        </div>
+        <div class="card-value" id="ins-type-display"></div>
+        <div class="card-sub mono" id="ins-member-display"></div>
+
+        <div class="edit-panel" id="panel-ins">
+          <label class="field-label" for="new-insurance-type">New insurance carrier</label>
+          <select id="new-insurance-type" class="form-select" onchange="handleNewInsuranceType()">
+            <option value="">Select insurance...</option>
+            <option value="United">United</option>
+            <option value="Aetna">Aetna</option>
+            <option value="Cigna">Cigna</option>
+            <option value="Anthem BCBS">Anthem BCBS</option>
+            <option value="Medicare">Medicare</option>
+            <option value="Medicaid">Medicaid</option>
+            <option value="NYSHIP">NYSHIP</option>
+            <option value="Fidelis">Fidelis</option>
+            <option value="WellCare">WellCare</option>
+            <option value="Humana">Humana</option>
+            <option value="Other">Other</option>
+          </select>
+
+          <div class="hidden" id="other-insurance-group">
+            <label class="field-label" for="other-insurance-name">Carrier name</label>
+            <input type="text" id="other-insurance-name" class="form-input" placeholder="Enter your insurance name">
+          </div>
+
+          <label class="field-label" for="new-member-id">New member ID</label>
+          <input type="text" id="new-member-id" class="form-input" placeholder="Enter your new member ID" inputmode="text">
+
+          <div class="upload-section">
+            <label class="field-label">Insurance card <span class="optional-tag">optional</span></label>
+            <p class="field-hint">Uploading helps us verify your coverage faster.</p>
+            <div class="upload-zone" onclick="document.getElementById('card-input').click()">
+              <i class="ti ti-camera"></i>
+              <span>Tap to upload front &amp; back</span>
+              <input type="file" id="card-input" accept="image/*,.pdf" multiple style="display:none" onchange="handleCardUpload(event)">
             </div>
-
-            <div class="apt-warning hidden" id="apt-warning">
-              <span class="apt-warning-icon">!</span>
-              <span>No apartment or unit number detected. If you live in an apartment, please update your address.</span>
-            </div>
-
-            <p class="step-question">Same address?</p>
-
-            <div class="decision-buttons decision-buttons-small">
-              <button class="decision-btn decision-small decision-yes" id="btn-address-same" onclick="selectAddressChange(false)">
-                <span>Yes</span>
-              </button>
-              <button class="decision-btn decision-small decision-no" id="btn-address-new" onclick="selectAddressChange(true)">
-                <span>No, change it</span>
-              </button>
-            </div>
-
-            <div class="address-edit hidden" id="address-edit">
-              <div class="field-group">
-                <label class="field-label" for="address-input">New address</label>
-                <input type="text" id="address-input" placeholder="Start typing to search..." autocomplete="off">
-                <p class="helper-text">Start typing and select your address from the dropdown.</p>
-                <div class="field-error hidden" id="address-error"></div>
-              </div>
-            </div>
-
-            <div class="step-footer" id="step3-footer">
-              <button class="btn-continue" onclick="nextStep()">Continue</button>
-              <button class="btn-back" onclick="prevStep()">Back</button>
-            </div>
+            <div class="upload-previews" id="upload-preview"></div>
           </div>
         </div>
+      </section>
 
-        <!-- Step 4: Insurance -->
-        <div class="wizard-panel" id="panel-4">
-          <div class="panel-content">
-            <h2 class="panel-title">Insurance</h2>
-
-            <div class="insurance-card">
-              <p class="current-value" id="ins-type-display"></p>
-              <p class="current-sub" id="ins-member-display"></p>
-            </div>
-
-            <p class="step-question">Same insurance as of order date?</p>
-
-            <div class="decision-buttons decision-buttons-small">
-              <button class="decision-btn decision-small decision-yes" id="btn-ins-same" onclick="selectInsuranceChange('no')">
-                <span>Yes</span>
-              </button>
-              <button class="decision-btn decision-small decision-no" id="btn-ins-new" onclick="selectInsuranceChange('yes')">
-                <span>No, it's changed</span>
-              </button>
-            </div>
-
-            <div class="insurance-edit hidden" id="insurance-edit">
-              <div class="field-group">
-                <label class="field-label" for="new-insurance-type">New Insurance Carrier</label>
-                <select id="new-insurance-type" class="native-select" onchange="handleNewInsuranceType()">
-                  <option value="">Select insurance...</option>
-                  <option value="United">United</option>
-                  <option value="Aetna">Aetna</option>
-                  <option value="Cigna">Cigna</option>
-                  <option value="Anthem BCBS">Anthem BCBS</option>
-                  <option value="Medicare">Medicare</option>
-                  <option value="Medicaid">Medicaid</option>
-                  <option value="NYSHIP">NYSHIP</option>
-                  <option value="Fidelis">Fidelis</option>
-                  <option value="WellCare">WellCare</option>
-                  <option value="Humana">Humana</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              <div class="field-group hidden" id="other-insurance-group">
-                <label class="field-label" for="other-insurance-name">Carrier Name</label>
-                <input type="text" id="other-insurance-name" placeholder="Enter your insurance name">
-              </div>
-
-              <div class="field-group">
-                <label class="field-label" for="new-member-id">New Member ID</label>
-                <input type="text" id="new-member-id" placeholder="Enter your new member ID" inputmode="text">
-              </div>
-
-              <div class="field-group">
-                <label class="field-label">Insurance Card (optional)</label>
-                <p class="helper-text">Uploading helps us verify your coverage faster.</p>
-                <div class="upload-area" onclick="document.getElementById('card-input').click()">
-                  <p>Tap to upload front & back of your insurance card</p>
-                  <input type="file" id="card-input" accept="image/*,.pdf" multiple style="display:none" onchange="handleCardUpload(event)">
-                </div>
-                <div class="upload-preview" id="upload-preview"></div>
-              </div>
-            </div>
-
-            <div class="step-footer" id="step4-footer">
-              <button class="btn-continue" onclick="nextStep()">Continue</button>
-              <button class="btn-back" onclick="prevStep()">Back</button>
-            </div>
-          </div>
+      <!-- ═══ 5. NEED A HAND ═══ -->
+      <section class="card" data-accent="pink">
+        <div class="card-head">
+          <span class="card-label"><span class="card-icon"><i class="ti ti-message-circle"></i></span> Need a hand?</span>
         </div>
-
-        <!-- Step 5: Review & Confirm -->
-        <div class="wizard-panel" id="panel-5">
-          <div class="panel-content">
-            <h2 class="panel-title" id="review-title">Review & Confirm</h2>
-
-            <div class="review-diff" id="review-diff">
-              <!-- Populated dynamically -->
-            </div>
-
-            <!-- OOP total in review -->
-            <div class="review-oop" id="review-oop">
-              <div class="oop-footer-total">
-                <span class="oop-footer-total-amount" id="review-total">$0.00</span>
-                <span class="oop-footer-total-label">Out-of-Pocket Estimate</span>
-              </div>
-              <p class="oop-disclaimer">Estimate only — still in testing.<br>Final charges may vary based on your plan.</p>
-            </div>
-
-            <div class="step-footer">
-              <button class="btn-submit" id="submit-btn" onclick="handleSubmit()">Submit Order</button>
-              <button class="btn-back" onclick="prevStep()">Back to edit</button>
-            </div>
+        <div id="help-form">
+          <p class="card-sub" style="margin:8px 0 12px">Message your care team — we usually reply the same day.</p>
+          <div class="help-chips">
+            <button class="help-chip" onclick="fillHelp('I have a question about my items')">Question about items</button>
+            <button class="help-chip" onclick="fillHelp('I have a billing question')">Billing question</button>
+            <button class="help-chip" onclick="fillHelp('I\'d like to speak with someone')">Talk to a person</button>
           </div>
+          <textarea id="help-msg" class="form-textarea" placeholder="Type your message…" rows="3"></textarea>
+          <button class="send-help-btn" id="send-help-btn" onclick="sendHelpMessage()"><i class="ti ti-send"></i> Send message</button>
         </div>
+        <div class="help-done hidden" id="help-done">
+          <i class="ti ti-circle-check"></i>
+          <span>Message sent — your care team will be in touch.</span>
+        </div>
+      </section>
 
-      </div><!-- /wizard-track -->
-    </div><!-- /wizard-viewport -->
+      <!-- ═══ OOP Estimate ═══ -->
+      <div class="oop-card" id="oop-card" style="display:none">
+        <div class="oop-amount" id="oop-total">$0.00</div>
+        <div class="oop-label">Out-of-Pocket Estimate</div>
+        <p class="oop-note">Estimate only — still in testing. Final charges may vary based on your plan.</p>
+      </div>
 
+      <!-- ═══ Submit ═══ -->
+      <button class="cta-btn" id="submit-btn" onclick="handleSubmit()">
+        Confirm &amp; submit order <i class="ti ti-arrow-right"></i>
+      </button>
+      <p class="legal-text">By submitting you authorize this resupply shipment.</p>
+
+    </div><!-- /cards-wrap -->
   </div><!-- /app -->
 
-  <!-- Success screen -->
-  <div id="success-screen">
-    <div class="success-icon">✓</div>
+  <!-- ═══ Success ═══ -->
+  <div id="success-screen" class="screen-center" style="display:none">
+    <div class="screen-icon screen-icon--success"><i class="ti ti-check"></i></div>
+    <h2>Order confirmed</h2>
     <p id="success-message"></p>
     <p class="success-sub" id="success-sub">We'll send you a text with your confirmation details.</p>
   </div>
 
-  <!-- Network error banner (hidden) -->
-  <div class="network-error hidden" id="network-error">
+  <!-- ═══ Network error ═══ -->
+  <div class="network-banner hidden" id="network-error">
     Couldn't reach our server. Please try again or text us.
   </div>
 

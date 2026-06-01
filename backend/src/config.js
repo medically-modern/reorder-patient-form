@@ -77,6 +77,9 @@ const COLUMNS = {
 
   // Portal notes
   PORTAL_NOTES:     "long_text_mm3evvzj",
+
+  // Patient help message (from reorder form "Need a hand?" section)
+  PATIENT_HELP_MSG: "long_text_mm3xnb6k",
 };
 
 // Status index maps for reorder-specific columns

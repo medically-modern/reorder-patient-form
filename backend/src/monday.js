@@ -589,6 +589,19 @@ async function processReorderSubmission(uid, submission) {
     });
   }
 
+  // ─── Help message (from "Need a hand?" section) ───
+
+  if (submission.helpMessage) {
+    const helpText = submission.helpChip
+      ? `[${submission.helpChip}]\n${submission.helpMessage}`
+      : submission.helpMessage;
+    tasks.push({
+      label: "Patient Help Message",
+      fn: () => writeLongText(itemId, COLUMNS.PATIENT_HELP_MSG, helpText),
+    });
+    changeSummaryParts.push(`Patient sent a help message: "${submission.helpMessage.slice(0, 80)}${submission.helpMessage.length > 80 ? '...' : ''}"`);
+  }
+
   // ─── Execute all writes in parallel ───
 
   console.log(`[monday] Processing reorder submission for UID ${uid}: ${tasks.length} writes, response=${submission.response}`);

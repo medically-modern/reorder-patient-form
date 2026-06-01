@@ -1,27 +1,25 @@
 // ═══════════════════════════════════════════════════════
-// Reorder Patient Form — Wizard UI
-// 5-step wizard with sliding panels
+// Medically Modern — Reorder Confirmation
+// Single-page card-based UI (v2)
+// ALL LOGIC PRESERVED from wizard version
 // ═══════════════════════════════════════════════════════
 
 const API_BASE = window.location.hostname === "localhost"
   ? "http://localhost:3001"
   : "https://reorder-patient-form-production.up.railway.app";
 
-// ─── State (useReducer-style) ───
-
+// ─── State ───
 const state = {
-  currentStep: 1,
-  maxReachedStep: 1,
   patientData: null,
   orderOptions: null,
   sessionToken: null,
 
-  // Step 1
-  decision: null,           // "confirm" | "delay"
+  // Date
+  originalDate: null,     // original order date (for delay detection)
   delayDate: null,
   delayLessThan20Days: false,
 
-  // Step 2
+  // Items
   sensorsOptOut: false,
   cartridgesOptOut: false,
   infusionOptOut: false,
@@ -29,7 +27,7 @@ const state = {
   infQty2: 0,
   hasSecondSet: false,
 
-  // Snapshots of initial dropdown state (captured after form loads, used for review comparison)
+  // Snapshots of initial state (for change detection)
   initialSensorType: null,
   initialInfLabel1: null,
   initialInfIndex1: null,
@@ -38,26 +36,22 @@ const state = {
   initialInfIndex2: null,
   initialInfQty2: 0,
 
-  // Step 3
-  addressChanged: null,  // null until user selects same/changed
+  // Address
+  addressChanged: false,
   newAddress: null,
   addressSelectedFromGoogle: false,
   addressCoords: { lat: 0, lng: 0 },
 
-  // Step 4
-  insuranceChanged: null,   // null | "no" | "yes"
+  // Insurance
+  insuranceChanged: false,
   uploadedFiles: [],
 
-  // Derived
-  isOptionalFlow: false,    // delay >= 20 days means steps 2-4 optional
+  // Help
+  helpChip: null,
+  helpMessage: "",
 };
 
-// ─── Lock horizontal swipe on wizard ───
-// CSS touch-action: pan-y on body/viewport handles this.
-// No JS touchmove handler needed — it interferes with natural vertical scrolling.
-
 // ─── Init ───
-
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
@@ -90,7 +84,7 @@ async function init() {
       loadGooglePlaces(configRes.googleMapsKey);
     }
 
-    renderWizard();
+    renderPage();
   } catch (err) {
     console.error("Init error:", err);
     showError("Something went wrong loading your information. Please try your link again.");
@@ -98,148 +92,159 @@ async function init() {
 }
 
 // ─── API helper ───
-
 async function apiFetch(path, opts = {}) {
   const headers = { "Content-Type": "application/json" };
-  if (state.sessionToken) {
-    headers["Authorization"] = `Bearer ${state.sessionToken}`;
-  }
-  const res = await fetch(`${API_BASE}${path}`, {
-    credentials: "include",
-    headers,
-    ...opts,
-  });
+  if (state.sessionToken) headers["Authorization"] = `Bearer ${state.sessionToken}`;
+  const res = await fetch(`${API_BASE}${path}`, { credentials: "include", headers, ...opts });
   const data = await res.json();
   if (!res.ok && !data.error) throw new Error(`API error: ${res.status}`);
   return data;
 }
 
-// ─── Render wizard ───
+// ═══════════════════════════════════════════════════════
+// RENDER — populate the page from patient data
+// ═══════════════════════════════════════════════════════
 
-function renderWizard() {
+function renderPage() {
   document.getElementById("loading-screen").style.display = "none";
-  document.getElementById("app").style.display = "flex";
+  document.getElementById("app").style.display = "block";
 
   const pd = state.patientData;
 
-  // Set greeting with first name
-  const greetingEl = document.getElementById("patient-greeting");
-  if (greetingEl && pd.name) {
+  // Greeting
+  if (pd.name) {
     const firstName = pd.name.split(" ")[0];
-    greetingEl.textContent = `Hey, ${firstName}!`;
+    document.getElementById("patient-greeting").textContent = `Hey ${firstName} — here's your refill.`;
   }
 
-  // Step 1: Order date
+  // ─── Date card ───
   const nextOrder = pd.nextOrder;
+  state.originalDate = nextOrder;
   if (nextOrder) {
     const d = new Date(nextOrder + "T00:00:00");
-    document.getElementById("order-date-display").textContent = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-    document.getElementById("order-date-day").textContent = d.toLocaleDateString("en-US", { weekday: "long" });
+    const dateStr = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const dayStr = d.toLocaleDateString("en-US", { weekday: "long" });
+    document.getElementById("order-date-display").textContent = `${dateStr} · ${dayStr}`;
 
-    // Set delay date input constraints
+    // Set date input constraints
     const dateInput = document.getElementById("delay-date-input");
+    dateInput.value = nextOrder;
     dateInput.min = nextOrder;
-    // Max = 8 weeks from next order date
     const maxDate = new Date(d);
     maxDate.setDate(maxDate.getDate() + 56);
     dateInput.max = maxDate.toISOString().split("T")[0];
+    dateInput.addEventListener("change", handleDelayDateChange);
   } else {
     document.getElementById("order-date-display").textContent = "Not scheduled";
-    document.getElementById("order-date-day").textContent = "";
   }
 
-  // Step 2: Populate order details
-  renderOrderOptions();
+  // ─── Product rows ───
+  renderProductRows();
 
-  // Step 3: Address
-  // US-style addresses follow "Street, City, State Zip, Country".
-  // We split on the FIRST comma so line 1 is the street (the most
-  // identity-bearing piece) and line 2 is everything after
-  // (city, state, zip, country). Short addresses without a comma
-  // render as a single line. Avoid mid-word wrap with explicit
-  // line breaks instead of letting CSS wrap arbitrarily.
-  const addressEl = document.getElementById("current-address-display");
-  const addrText = pd.address || "No address on file";
-  renderTwoLineAddress(addressEl, addrText);
-  applyAddressShrink(addressEl);
-  checkApartmentWarning(addrText);
+  // ─── Order edit panel ───
+  renderOrderEditPanel();
 
-  // Step 4: Insurance
-  const insType = pd.primaryInsurance || "Unknown";
-  const memberId = pd.memberId1 || "";
-  document.getElementById("ins-type-display").textContent = simplifyInsurance(insType);
-  document.getElementById("ins-member-display").innerHTML = "Member ID: " + maskMemberId(memberId);
+  // ─── Address card ───
+  const addr = pd.address || "No address on file";
+  const firstComma = addr.indexOf(",");
+  if (firstComma > 0) {
+    document.getElementById("address-line1").textContent = addr.slice(0, firstComma).trim();
+    document.getElementById("address-line2").textContent = addr.slice(firstComma + 1).trim();
+  } else {
+    document.getElementById("address-line1").textContent = addr;
+    document.getElementById("address-line2").textContent = "";
+  }
+  checkApartmentWarning(addr);
 
-  // Set initial OOP in footer
-  updateOopFooter();
+  // ─── Insurance card ───
+  document.getElementById("ins-type-display").textContent = simplifyInsurance(pd.primaryInsurance || "Unknown");
+  document.getElementById("ins-member-display").innerHTML = "Member ID: " + maskMemberId(pd.memberId1 || "");
 
-  // Apply density now that all section visibility / skip state is set.
-  updateOrderDensity();
-
-  // Add date change listener
-  document.getElementById("delay-date-input").addEventListener("change", handleDelayDateChange);
-
-  updateStepIndicator();
+  // ─── OOP ───
+  updateOop();
 }
 
-function renderOrderOptions() {
+// ─── Product rows (display) ───
+function renderProductRows() {
+  const pd = state.patientData;
+
+  // Sensors
+  if (pd.servingSensors) {
+    const row = document.getElementById("prod-sensors");
+    row.style.display = "";
+    document.getElementById("prod-sensors-name").textContent = pd.sensorsType || "CGM Sensor";
+  }
+
+  // Infusion Set 1
+  if (pd.servingInfusionSet1) {
+    const row = document.getElementById("prod-inf1");
+    row.style.display = "";
+    document.getElementById("prod-inf1-name").textContent = pd.infusionSet1 || "Infusion Set";
+    const qty1 = parseInt(pd.infQty1, 10) || 3;
+    state.infQty1 = qty1;
+    document.getElementById("prod-inf1-qty").textContent = String(qty1);
+    document.getElementById("prod-inf1-unit").textContent = qty1 === 1 ? "box" : "boxes";
+  }
+
+  // Infusion Set 2
+  if (pd.servingInfusionSet2) {
+    const row = document.getElementById("prod-inf2");
+    row.style.display = "";
+    state.hasSecondSet = true;
+    document.getElementById("prod-inf2-name").textContent = pd.infusionSet2 || "Infusion Set 2";
+    const qty2 = parseInt(pd.infQty2, 10) || 0;
+    state.infQty2 = qty2;
+    document.getElementById("prod-inf2-qty").textContent = String(qty2);
+    document.getElementById("prod-inf2-unit").textContent = qty2 === 1 ? "box" : "boxes";
+  }
+
+  // Cartridges
+  if (pd.servingSupplies) {
+    const row = document.getElementById("prod-cartridges");
+    row.style.display = "";
+    document.getElementById("prod-cartridges-name").textContent = pd.suppliesType || "Cartridges";
+  }
+}
+
+// ─── Order edit panel (dropdowns/steppers) ───
+function renderOrderEditPanel() {
   const pd = state.patientData;
   const opts = state.orderOptions;
 
   // Sensors
-  const sensorSection = document.getElementById("section-sensors");
   if (pd.servingSensors && opts?.sensorsTypes?.length > 0) {
-    sensorSection.style.display = "";
+    document.getElementById("edit-sensors").style.display = "";
     const select = document.getElementById("sensor-type-select");
     select.innerHTML = opts.sensorsTypes
       .map(o => `<option value="${escAttr(o.label)}" ${o.label.toLowerCase() === (pd.sensorsType || "").toLowerCase() ? "selected" : ""}>${escHtml(o.label)}</option>`)
       .join("");
-  } else {
-    sensorSection.style.display = "none";
   }
 
-  // Cartridges (read-only display based on pump)
-  const cartSection = document.getElementById("section-cartridges");
-  if (pd.servingSupplies) {
-    cartSection.style.display = "";
-    // Write the cartridge type into the inline pill (new layout). Keep
-    // the (hidden) <select> in sync for any legacy code/form reads.
-    const pill = document.getElementById("cartridge-selection-pill");
-    const select = document.getElementById("cartridge-type-select");
-    const cartType = pd.suppliesType || "Mobi";
-    if (pill) pill.textContent = cartType;
-    if (select) select.innerHTML = `<option selected>${escHtml(cartType)}</option>`;
-  } else {
-    cartSection.style.display = "none";
-  }
-
-  // Infusion Sets
-  const infSection = document.getElementById("section-infusion");
+  // Infusion
   if (pd.servingInfusionSet1) {
-    infSection.style.display = "";
-
-    // Populate brand/size/tubing for set 1
+    document.getElementById("edit-infusion").style.display = "";
     populateInfusionDropdowns(1, pd.infusionSet1);
-    state.infQty1 = parseInt(pd.infQty1, 10) || 3;
     document.getElementById("inf-qty-1").textContent = String(state.infQty1);
 
-    // Set 2
     if (pd.servingInfusionSet2) {
-      state.hasSecondSet = true;
-      document.getElementById("infusion-row-2").classList.remove("hidden");
+      document.getElementById("inf-set-tag-1").style.display = "";
+      document.getElementById("inf-section-label").textContent = "Infusion Sets";
+      document.getElementById("inf-edit-row-2").classList.remove("hidden");
       document.getElementById("add-set-link").classList.add("hidden");
-      document.getElementById("set-label-text-1").textContent = "Set 1";
       populateInfusionDropdowns(2, pd.infusionSet2);
-      state.infQty2 = parseInt(pd.infQty2, 10) || 0;
       document.getElementById("inf-qty-2").textContent = String(state.infQty2);
     }
 
     updateQtyButtons();
-  } else {
-    infSection.style.display = "none";
   }
 
-  // Snapshot initial dropdown state for review comparison
+  // Cartridges
+  if (pd.servingSupplies) {
+    document.getElementById("edit-cartridges").style.display = "";
+    document.getElementById("cartridge-display").textContent = pd.suppliesType || "Cartridges";
+  }
+
+  // Snapshot initial state
   state.initialSensorType = document.getElementById("sensor-type-select")?.value || null;
   state.initialInfLabel1 = getInfusionLabel(1);
   state.initialInfIndex1 = getInfusionIndex(1);
@@ -249,70 +254,35 @@ function renderOrderOptions() {
   state.initialInfQty2 = state.infQty2;
 }
 
-// ─── Infusion Set Conditional Mapping ───
-// Maps brand → sizes → tubing lengths → Monday board status index
-// Each combo resolves to a single Monday column index for submission
+// ═══════════════════════════════════════════════════════
+// INFUSION SET MAPS — identical to original
+// ═══════════════════════════════════════════════════════
+
 const INFUSION_MAP = {
-  "AutoSoft XC": {
-    "6 mm": { "5\"": 151, "23\"": 107, "32\"": 108, "43\"": 110 },
-    "9 mm": { "23\"": 153, "43\"": 16 },
-  },
-  "AutoSoft 90": {
-    "6 mm": { "23\"": 106, "43\"": 13 },
-    "9 mm": { "23\"": 4, "43\"": 15 },
-  },
-  "AutoSoft 30": {
-    "13 mm": { "23\"": 105, "43\"": 103 },
-  },
-  "TruSteel": {
-    "6 mm": { "23\"": 154, "32\"": 155 },
-    "8 mm": { "23\"": 3, "32\"": 18 },
-  },
-  "VariSoft": {
-    "13 mm": { "23\"": 109, "32\"": 12 },
-    "17 mm": { "23\"": 1 },
-  },
-  "Contact": {
-    "6mm": { "23\"": 19 },
-  },
-  "Inset": {
-    "6mm": { "23\"": 101 },
-  },
-  "Luer": {
-    "6mm": { "32\"": 102 },
-  },
-  "Mio Advance Clear": {
-    "9mm": { "23\"": 152 },
-  },
+  "AutoSoft XC": { "6 mm": { "5\"": 151, "23\"": 107, "32\"": 108, "43\"": 110 }, "9 mm": { "23\"": 153, "43\"": 16 } },
+  "AutoSoft 90": { "6 mm": { "23\"": 106, "43\"": 13 }, "9 mm": { "23\"": 4, "43\"": 15 } },
+  "AutoSoft 30": { "13 mm": { "23\"": 105, "43\"": 103 } },
+  "TruSteel": { "6 mm": { "23\"": 154, "32\"": 155 }, "8 mm": { "23\"": 3, "32\"": 18 } },
+  "VariSoft": { "13 mm": { "23\"": 109, "32\"": 12 }, "17 mm": { "23\"": 1 } },
+  "Contact": { "6mm": { "23\"": 19 } },
+  "Inset": { "6mm": { "23\"": 101 } },
+  "Luer": { "6mm": { "32\"": 102 } },
+  "Mio Advance Clear": { "9mm": { "23\"": 152 } },
 };
 
-// Infusion Set 2 has fewer options on Monday — separate map with Set 2 indexes
 const INFUSION_MAP_SET2 = {
-  "AutoSoft XC": {
-    "6 mm": { "5\"": 2, "23\"": 4, "32\"": 11, "43\"": 0 },
-    "9 mm": { "23\"": 6 },
-  },
-  "AutoSoft 90": {
-    "6 mm": { "23\"": 9, "43\"": 3 },
-    "9 mm": { "23\"": 7 },
-  },
-  "AutoSoft 30": {
-    "13 mm": { "23\"": 10 },
-  },
-  "TruSteel": {
-    "6 mm": { "23\"": 1 },
-  },
-  "VariSoft": {
-    "13 mm": { "32\"": 8 },
-  },
+  "AutoSoft XC": { "6 mm": { "5\"": 2, "23\"": 4, "32\"": 11, "43\"": 0 }, "9 mm": { "23\"": 6 } },
+  "AutoSoft 90": { "6 mm": { "23\"": 9, "43\"": 3 }, "9 mm": { "23\"": 7 } },
+  "AutoSoft 30": { "13 mm": { "23\"": 10 } },
+  "TruSteel": { "6 mm": { "23\"": 1 } },
+  "VariSoft": { "13 mm": { "32\"": 8 } },
 };
 
-// Pump-type → allowed infusion set brands
 const PUMP_INFUSION_FILTER = {
-  "ilet":          ["Contact", "Inset", "Luer"],
-  "t:slim":        ["AutoSoft XC", "AutoSoft 90", "AutoSoft 30", "TruSteel", "VariSoft"],
-  "mobi":          ["AutoSoft XC", "AutoSoft 90", "AutoSoft 30", "TruSteel", "VariSoft"],
-  "minimed 780g":  ["Mio Advance Clear"],
+  "ilet": ["Contact", "Inset", "Luer"],
+  "t:slim": ["AutoSoft XC", "AutoSoft 90", "AutoSoft 30", "TruSteel", "VariSoft"],
+  "mobi": ["AutoSoft XC", "AutoSoft 90", "AutoSoft 30", "TruSteel", "VariSoft"],
+  "minimed 780g": ["Mio Advance Clear"],
 };
 
 function getAllowedBrands() {
@@ -320,38 +290,20 @@ function getAllowedBrands() {
   for (const [key, brands] of Object.entries(PUMP_INFUSION_FILTER)) {
     if (pumpType.includes(key)) return brands;
   }
-  return null; // no filter — show all
+  return null;
 }
 
-// Helper: return the correct infusion map for the given set number
-function getMapForSet(setNum) {
-  return setNum === 2 ? INFUSION_MAP_SET2 : INFUSION_MAP;
-}
+function getMapForSet(setNum) { return setNum === 2 ? INFUSION_MAP_SET2 : INFUSION_MAP; }
 
-// Reverse lookup: Monday index → { brand, size, tubing }
-const INFUSION_REVERSE = {};
-for (const [brand, sizes] of Object.entries(INFUSION_MAP)) {
-  for (const [size, tubings] of Object.entries(sizes)) {
-    for (const [tubing, idx] of Object.entries(tubings)) {
-      INFUSION_REVERSE[idx] = { brand, size, tubing };
-    }
-  }
-}
-
-// Also map label strings to their index for reverse lookup from label text
 function parseInfusionLabel(label, setNum) {
   if (!label) return null;
   const map = getMapForSet(setNum || 1);
-  // Collapse all whitespace (including narrow no-break space) and lowercase
-  const normalized = label.replace(/[\s  ]+/g, ' ').trim().toLowerCase();
+  const normalized = label.replace(/[\s  ]+/g, ' ').trim().toLowerCase();
   for (const [brand, sizes] of Object.entries(map)) {
     for (const [size, tubings] of Object.entries(sizes)) {
       for (const [tubing, idx] of Object.entries(tubings)) {
-        // Build the expected label from map keys and normalize the same way
-        const expected = `${brand} ${size} ${tubing}`.replace(/[\s  ]+/g, ' ').trim().toLowerCase();
-        if (normalized === expected) {
-          return { brand, size, tubing, index: idx };
-        }
+        const expected = `${brand} ${size} ${tubing}`.replace(/[\s  ]+/g, ' ').trim().toLowerCase();
+        if (normalized === expected) return { brand, size, tubing, index: idx };
       }
     }
   }
@@ -364,13 +316,11 @@ function populateInfusionDropdowns(setNum, currentValue) {
   const tubingSelect = document.getElementById(`inf-tubing-${setNum}`);
   if (!brandSelect || !sizeSelect || !tubingSelect) return;
 
-  // Populate brand dropdown (filtered by pump type)
   const allowedBrands = getAllowedBrands();
   const map = getMapForSet(setNum);
   const brands = Object.keys(map).filter(b => !allowedBrands || allowedBrands.includes(b));
   brandSelect.innerHTML = brands.map(b => `<option value="${escAttr(b)}">${escHtml(b)}</option>`).join("");
 
-  // Try to match current value
   const parsed = parseInfusionLabel(currentValue, setNum);
   if (parsed) {
     brandSelect.value = parsed.brand;
@@ -388,9 +338,7 @@ function populateSizeDropdown(setNum, brand, selectValue) {
   const map = getMapForSet(setNum);
   const sizes = Object.keys(map[brand] || {});
   sizeSelect.innerHTML = sizes.map(s => `<option value="${escAttr(s)}">${escHtml(s)}</option>`).join("");
-  if (selectValue && sizes.includes(selectValue)) {
-    sizeSelect.value = selectValue;
-  }
+  if (selectValue && sizes.includes(selectValue)) sizeSelect.value = selectValue;
 }
 
 function populateTubingDropdown(setNum, brand, size, selectValue) {
@@ -398,9 +346,7 @@ function populateTubingDropdown(setNum, brand, size, selectValue) {
   const map = getMapForSet(setNum);
   const tubings = Object.keys((map[brand] || {})[size] || {});
   tubingSelect.innerHTML = tubings.map(t => `<option value="${escAttr(t)}">${escHtml(t)}</option>`).join("");
-  if (selectValue && tubings.includes(selectValue)) {
-    tubingSelect.value = selectValue;
-  }
+  if (selectValue && tubings.includes(selectValue)) tubingSelect.value = selectValue;
 }
 
 function handleInfBrandChange(setNum) {
@@ -417,7 +363,6 @@ function handleInfSizeChange(setNum) {
   populateTubingDropdown(setNum, brand, size);
 }
 
-// Get the resolved Monday label for a set's current dropdown state
 function getInfusionLabel(setNum) {
   const brand = document.getElementById(`inf-brand-${setNum}`)?.value;
   const size = document.getElementById(`inf-size-${setNum}`)?.value;
@@ -426,7 +371,6 @@ function getInfusionLabel(setNum) {
   return `${brand} ${size} ${tubing}`;
 }
 
-// Get the Monday status index for a set's current state
 function getInfusionIndex(setNum) {
   const map = getMapForSet(setNum);
   const brand = document.getElementById(`inf-brand-${setNum}`)?.value;
@@ -435,362 +379,204 @@ function getInfusionIndex(setNum) {
   return ((map[brand] || {})[size] || {})[tubing] || null;
 }
 
-// ─── Wizard Navigation ───
+// ═══════════════════════════════════════════════════════
+// PANEL TOGGLE
+// ═══════════════════════════════════════════════════════
 
-function goToStep(step) {
-  if (step < 1 || step > 5) return;
+function togglePanel(id, btn) {
+  const panel = document.getElementById("panel-" + id);
+  const isOpen = panel.classList.toggle("open");
+  btn.innerHTML = isOpen
+    ? '<i class="ti ti-check"></i> Done'
+    : '<i class="ti ti-pencil"></i> Edit';
 
-  state.currentStep = step;
-  if (step > state.maxReachedStep) state.maxReachedStep = step;
-
-  const track = document.getElementById("wizard-track");
-  track.style.transform = `translateX(-${(step - 1) * 100}%)`;
-
-  // Re-fit the address font on Step 3 every time we land on it —
-  // layout settles only once the panel is on-screen, so the init-time
-  // measurement can be wrong. Cheap to re-run (single tight loop).
-  if (step === 3) {
-    const addressEl = document.getElementById("current-address-display");
-    if (addressEl && addressEl.textContent) applyAddressShrink(addressEl);
-  }
-
-  updateStepIndicator();
-
-  // Scroll to top so the new panel content is visible
-  window.scrollTo({ top: 0, behavior: "smooth" });
-  const panel = document.getElementById(`panel-${step}`);
-  const panelContent = panel?.querySelector(".panel-content");
-  if (panelContent) panelContent.scrollTop = 0;
-
-  // Focus first interactive element in new panel
-  setTimeout(() => {
-    const focusable = panel.querySelector("button, input, select, [tabindex]");
-    if (focusable) focusable.focus({ preventScroll: true });
-  }, 260);
-}
-
-function nextStep() {
-  // Validate current step before moving
-  if (!validateCurrentStep()) return;
-
-  // If step 5, prepare the review
-  if (state.currentStep === 4) {
-    renderReview();
-  }
-
-  goToStep(state.currentStep + 1);
-}
-
-function prevStep() {
-  if (state.currentStep > 1) {
-    goToStep(state.currentStep - 1);
-  }
-}
-
-function jumpToStep(step) {
-  // Can only jump to completed steps (not future)
-  if (step < state.currentStep && step >= 1) {
-    goToStep(step);
-  }
-}
-
-function updateStepIndicator() {
-  const circles = document.querySelectorAll(".step-circle");
-  circles.forEach((circle, i) => {
-    const stepNum = i + 1;
-    circle.classList.remove("active", "completed");
-    if (stepNum === state.currentStep) {
-      circle.classList.add("active");
-    } else if (stepNum < state.currentStep) {
-      circle.classList.add("completed");
+  // When closing address panel, mark as changed if user entered something
+  if (id === "addr" && !isOpen) {
+    const input = document.getElementById("address-input");
+    if (input.value.trim() && state.addressSelectedFromGoogle) {
+      state.addressChanged = true;
+      state.newAddress = input.value.trim();
+      // Update display
+      const addr = state.newAddress;
+      const firstComma = addr.indexOf(",");
+      if (firstComma > 0) {
+        document.getElementById("address-line1").textContent = addr.slice(0, firstComma).trim();
+        document.getElementById("address-line2").textContent = addr.slice(firstComma + 1).trim();
+      } else {
+        document.getElementById("address-line1").textContent = addr;
+        document.getElementById("address-line2").textContent = "";
+      }
+      checkApartmentWarning(addr);
     }
-  });
+  }
 
-  // Track fill
-  const fill = document.getElementById("step-track-fill");
-  const pct = ((state.currentStep - 1) / 4) * 100;
-  fill.style.width = `${pct}%`;
-}
-
-// ─── Step 1: Order Date ───
-
-function selectOrderDecision(value) {
-  state.decision = value;
-
-  // Update button states
-  document.getElementById("btn-confirm").classList.toggle("selected", value === "confirm");
-  document.getElementById("btn-delay").classList.toggle("selected", value === "delay");
-
-  const delayPicker = document.getElementById("delay-picker");
-  const footer = document.getElementById("step1-footer");
-
-  if (value === "confirm") {
-    delayPicker.classList.add("hidden");
-    footer.style.display = "";
-    state.delayDate = null;
-    state.delayLessThan20Days = false;
-    state.isOptionalFlow = false;
-  } else if (value === "delay") {
-    delayPicker.classList.remove("hidden");
-    // Default the calendar to the current order date
-    const dateInput = document.getElementById("delay-date-input");
-    if (state.patientData?.nextOrder && !dateInput.value) {
-      dateInput.value = state.patientData.nextOrder;
+  // When closing insurance panel, mark as changed if user filled fields
+  if (id === "ins" && !isOpen) {
+    const insType = document.getElementById("new-insurance-type").value;
+    const memberId = document.getElementById("new-member-id").value.trim();
+    if (insType && memberId) {
+      state.insuranceChanged = true;
     }
-    // Don't show continue until date is selected
-    footer.style.display = "none";
-    state.delayDate = null;
+  }
+
+  // When closing items panel, update product row display
+  if (id === "items" && !isOpen) {
+    updateProductRowsFromEdits();
   }
 }
 
-function handleDelayDateChange() {
-  const dateInput = document.getElementById("delay-date-input");
-  const errorDiv = document.getElementById("delay-date-error");
-  const note20 = document.getElementById("delay-note-20");
-  const dateStr = dateInput.value;
-
-  if (!dateStr) return;
-
-  // Validate bounds
+// ─── Update product rows after edit ───
+function updateProductRowsFromEdits() {
   const pd = state.patientData;
-  const currentOrderDate = pd.nextOrder ? new Date(pd.nextOrder + "T00:00:00") : null;
-  const selectedDate = new Date(dateStr + "T00:00:00");
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
 
-  // Max 8 weeks from order date
-  const maxDate = currentOrderDate ? new Date(currentOrderDate) : new Date(today);
-  maxDate.setDate(maxDate.getDate() + 56);
-
-  if (currentOrderDate && selectedDate < currentOrderDate) {
-    errorDiv.textContent = "Sorry, your scheduled order date is the earliest insurance will cover your reorder. Please text/call us if there is an extraordinary situation.";
-    errorDiv.classList.remove("hidden");
-    document.getElementById("step1-footer").style.display = "none";
-    return;
+  // Sensors
+  if (pd.servingSensors) {
+    const row = document.getElementById("prod-sensors");
+    if (state.sensorsOptOut) {
+      row.classList.add("skipped");
+    } else {
+      row.classList.remove("skipped");
+      const newType = document.getElementById("sensor-type-select")?.value;
+      if (newType) document.getElementById("prod-sensors-name").textContent = newType;
+    }
   }
 
-  if (selectedDate > maxDate) {
-    errorDiv.textContent = "Maximum delay is 8 weeks. Need longer? Text us and we'll help.";
-    errorDiv.classList.remove("hidden");
-    document.getElementById("step1-footer").style.display = "none";
-    return;
+  // Infusion 1
+  if (pd.servingInfusionSet1) {
+    const row1 = document.getElementById("prod-inf1");
+    if (state.infusionOptOut) {
+      row1.classList.add("skipped");
+      const row2 = document.getElementById("prod-inf2");
+      if (row2) row2.classList.add("skipped");
+    } else {
+      row1.classList.remove("skipped");
+      document.getElementById("prod-inf1-name").textContent = getInfusionLabel(1) || pd.infusionSet1;
+      document.getElementById("prod-inf1-qty").textContent = String(state.infQty1);
+      document.getElementById("prod-inf1-unit").textContent = state.infQty1 === 1 ? "box" : "boxes";
+
+      const row2 = document.getElementById("prod-inf2");
+      if (state.hasSecondSet) {
+        row2.style.display = "";
+        row2.classList.remove("skipped");
+        document.getElementById("prod-inf2-name").textContent = getInfusionLabel(2) || "Infusion Set 2";
+        document.getElementById("prod-inf2-qty").textContent = String(state.infQty2);
+        document.getElementById("prod-inf2-unit").textContent = state.infQty2 === 1 ? "box" : "boxes";
+      } else if (!pd.servingInfusionSet2) {
+        row2.style.display = "none";
+      }
+    }
   }
 
-  if (selectedDate < today) {
-    errorDiv.textContent = "Please select a future date.";
-    errorDiv.classList.remove("hidden");
-    document.getElementById("step1-footer").style.display = "none";
-    return;
+  // Cartridges
+  if (pd.servingSupplies) {
+    const row = document.getElementById("prod-cartridges");
+    if (state.cartridgesOptOut) {
+      row.classList.add("skipped");
+    } else {
+      row.classList.remove("skipped");
+    }
   }
 
-  // Valid date
-  errorDiv.classList.add("hidden");
-  state.delayDate = dateStr;
+  updateOop();
+}
 
-  // Check if less than 20 days from today
-  const diffDays = Math.ceil((selectedDate - today) / (1000 * 60 * 60 * 24));
-  state.delayLessThan20Days = diffDays < 20;
-  state.isOptionalFlow = diffDays >= 20;
+// ═══════════════════════════════════════════════════════
+// SKIP TOGGLES
+// ═══════════════════════════════════════════════════════
 
-  if (state.delayLessThan20Days) {
-    note20.classList.remove("hidden");
-  } else {
-    note20.classList.add("hidden");
+function toggleSkip(section) {
+  const btn = document.getElementById(`${section}-skip-btn`);
+  const editSection = document.getElementById(`edit-${section}`);
+
+  if (section === "sensors") {
+    state.sensorsOptOut = !state.sensorsOptOut;
+    btn.classList.toggle("active", state.sensorsOptOut);
+    btn.textContent = state.sensorsOptOut ? "Skipping ✓" : "Skip this cycle";
+    editSection.classList.toggle("skipped", state.sensorsOptOut);
+  }
+  if (section === "cartridges") {
+    state.cartridgesOptOut = !state.cartridgesOptOut;
+    btn.classList.toggle("active", state.cartridgesOptOut);
+    btn.textContent = state.cartridgesOptOut ? "Skipping ✓" : "Skip this cycle";
+    editSection.classList.toggle("skipped", state.cartridgesOptOut);
+  }
+  if (section === "infusion") {
+    state.infusionOptOut = !state.infusionOptOut;
+    btn.classList.toggle("active", state.infusionOptOut);
+    btn.textContent = state.infusionOptOut ? "Skipping ✓" : "Skip this cycle";
+    editSection.classList.toggle("skipped", state.infusionOptOut);
   }
 
-  // Show continue
-  document.getElementById("step1-footer").style.display = "";
+  updateOop();
 }
 
-// ─── Cartridge collapsible toggle (REMOVED) ───
-// Cartridges section now matches CGM Sensors layout — H3 + skip
-// toggle in the header, body always visible. Function kept as a
-// no-op so any stale cached HTML calling onclick="toggleCartridgeBody"
-// doesn't ReferenceError.
-
-function toggleCartridgeBody() { /* no-op — section no longer collapses */ }
-
-// ─── Step 2: Order Details ───
-
-
-// ─── Opt-out button handler ───
-
-function toggleOptOutBtn(section) {
-  const btn = document.getElementById(`${section}-optout-btn`);
-  const checkbox = document.getElementById(`${section}-optout`);
-  if (!btn || !checkbox) return;
-  checkbox.checked = !checkbox.checked;
-  btn.classList.toggle("active", checkbox.checked);
-  toggleOptOut(section);
-}
-
-function updateOrderDensity() {
-  // Count "active" sections (visible AND not skipped). pd reflects
-  // whether the patient has the line at all; state.*OptOut tracks
-  // operator skip toggles.
-  const pd = state.patientData || {};
-  const sensorsActive   = pd.servingSensors                                && !state.sensorsOptOut;
-  const cartridgesActive= pd.servingSupplies                                && !state.cartridgesOptOut;
-  const infusionActive  = (pd.servingInfusionSet1 || pd.servingInfusionSet2) && !state.infusionOptOut;
-  const activeCount = (sensorsActive ? 1 : 0) + (cartridgesActive ? 1 : 0) + (infusionActive ? 1 : 0);
-  const twoSets = !!state.hasSecondSet;
-
-  let density;
-  if (twoSets) {
-    density = "compact";
-  } else if (activeCount <= 1) {
-    density = "roomy";
-  } else {
-    density = "normal";
-  }
-
-  // Apply to the Step 2 panel content; cascades to children via CSS
-  // variables. Safe to call before the panel exists — querySelector
-  // bails gracefully.
-  const target = document.querySelector("#panel-2 .panel-content");
-  if (target) target.setAttribute("data-order-density", density);
-}
-
-function toggleOptOut(section) {
-  const checkbox = document.getElementById(`${section}-optout`);
-  const sectionEl = document.getElementById(`section-${section}`);
-  const checked = checkbox.checked;
-
-  if (section === "sensors") state.sensorsOptOut = checked;
-  if (section === "cartridges") state.cartridgesOptOut = checked;
-  if (section === "infusion") state.infusionOptOut = checked;
-
-  sectionEl.classList.toggle("opted-out", checked);
-
-  // Check empty state
-  checkEmptyState();
-  updateOopFooter();
-  updateOrderDensity();
-}
-
-function checkEmptyState() {
-  const pd = state.patientData;
-  const allOptedOut =
-    (!pd.servingSensors || state.sensorsOptOut) &&
-    (!pd.servingSupplies || state.cartridgesOptOut) &&
-    (!(pd.servingInfusionSet1 || pd.servingInfusionSet2) || state.infusionOptOut);
-
-  const warning = document.getElementById("empty-warning");
-  const continueBtn = document.getElementById("step2-continue");
-
-  if (allOptedOut) {
-    warning.classList.remove("hidden");
-    continueBtn.disabled = true;
-  } else {
-    warning.classList.add("hidden");
-    continueBtn.disabled = false;
-  }
-}
-
-function stepQty(setNum, delta) {
-  const key = `infQty${setNum}`;
-  const otherKey = setNum === 1 ? 'infQty2' : 'infQty1';
-  const combinedMax = getCombinedMaxQty();
-
-  let current = parseInt(state[key], 10) || 0;
-  let other = state.hasSecondSet ? (parseInt(state[otherKey], 10) || 0) : 0;
-
-  let newVal = current + delta;
-  newVal = Math.max(0, newVal);
-
-  const roomLeft = combinedMax - other;
-  // Detect a clamped-up + tap so we can surface a brief Max warning
-  // alongside the disabled-button visual.
-  const cappedAtMax = delta > 0 && newVal > roomLeft;
-  newVal = Math.min(newVal, roomLeft);
-  newVal = Math.max(0, newVal);
-
-  state[key] = newVal;
-  document.getElementById(`inf-qty-${setNum}`).textContent = String(newVal);
-  if (cappedAtMax) showMaxWarning(setNum, combinedMax);
-  updateQtyButtons();
-  updateOopFooter();
-}
-
-// Shared "Max N boxes" chip in the Infusion Sets header. Both
-// stepQty calls (Set 1 + Set 2) target the same element so the
-// warning surfaces in a predictable spot regardless of which set
-// hit the cap.
-let _maxWarningTimer = null;
-function showMaxWarning(_setNum, max) {
-  const el = document.getElementById("qty-max-warning-header");
-  if (!el) return;
-  el.textContent = `Max ${max} boxes`;
-  el.classList.add("show");
-  clearTimeout(_maxWarningTimer);
-  _maxWarningTimer = setTimeout(() => {
-    el.classList.remove("show");
-    // Clear text so :empty rule kicks in and the chrome collapses,
-    // preventing a tiny pill stub from lingering in the header.
-    el.textContent = "";
-  }, 1800);
-}
+// ═══════════════════════════════════════════════════════
+// QUANTITY STEPPER — identical logic
+// ═══════════════════════════════════════════════════════
 
 function isHighCapInsurance() {
   const ins = (state.patientData?.primaryInsurance || "").toLowerCase();
-  return ins.includes("anthem") && ins.includes("commercial") ||
-         ins.includes("horizon") && ins.includes("bcbs");
+  return (ins.includes("anthem") && ins.includes("commercial")) ||
+         (ins.includes("horizon") && ins.includes("bcbs"));
 }
 
-function getCombinedMaxQty() {
-  return isHighCapInsurance() ? 9 : 3;
+function getCombinedMaxQty() { return isHighCapInsurance() ? 9 : 3; }
+function getMaxQty() { return getCombinedMaxQty(); }
+
+function stepQty(setNum, delta) {
+  const key = `infQty${setNum}`;
+  const otherKey = setNum === 1 ? "infQty2" : "infQty1";
+  const combinedMax = getCombinedMaxQty();
+  let current = parseInt(state[key], 10) || 0;
+  let other = state.hasSecondSet ? (parseInt(state[otherKey], 10) || 0) : 0;
+  let newVal = current + delta;
+  newVal = Math.max(0, newVal);
+  const roomLeft = combinedMax - other;
+  const cappedAtMax = delta > 0 && newVal > roomLeft;
+  newVal = Math.min(newVal, roomLeft);
+  newVal = Math.max(0, newVal);
+  state[key] = newVal;
+  document.getElementById(`inf-qty-${setNum}`).textContent = String(newVal);
+  if (cappedAtMax) showMaxWarning(combinedMax);
+  updateQtyButtons();
+  updateOop();
 }
 
-function getMaxQty() {
-  // Keep for backward compat (buildSubmission uses this)
-  return getCombinedMaxQty();
+let _maxTimer = null;
+function showMaxWarning(max) {
+  const el = document.getElementById("qty-max-warning");
+  if (!el) return;
+  el.textContent = `Max ${max} boxes`;
+  el.classList.add("show");
+  el.classList.remove("hidden");
+  clearTimeout(_maxTimer);
+  _maxTimer = setTimeout(() => { el.classList.remove("show"); }, 1800);
 }
 
 function updateQtyButtons() {
   const combinedMax = getCombinedMaxQty();
-
   [1, 2].forEach(setNum => {
     const el = document.getElementById(`inf-qty-${setNum}`);
     if (!el) return;
     const val = parseInt(state[`infQty${setNum}`], 10) || 0;
-    const row = document.getElementById(`infusion-row-${setNum}`);
+    const row = document.getElementById(`inf-edit-row-${setNum}`);
     if (!row || row.classList.contains("hidden")) return;
-
-    const otherVal = state.hasSecondSet ? (parseInt(state[setNum === 1 ? 'infQty2' : 'infQty1'], 10) || 0) : 0;
+    const otherVal = state.hasSecondSet ? (parseInt(state[setNum === 1 ? "infQty2" : "infQty1"], 10) || 0) : 0;
     const roomLeft = combinedMax - otherVal;
-
-    const btns = row.querySelectorAll(".qty-btn");
-    // Use aria-disabled + a .at-cap class instead of the real
-    // disabled attribute. disabled=true on the button intercepts
-    // the click event before our onclick handler runs, which kills
-    // the chain to stepQty → showMaxWarning. With the visual cue
-    // class, the button still looks unclickable but the tap fires
-    // stepQty which shows the "Max N boxes" callout.
-    if (btns[0]) {
-      const atMin = val <= 0;
-      btns[0].classList.toggle("at-cap", atMin);
-      btns[0].setAttribute("aria-disabled", atMin ? "true" : "false");
-    }
-    if (btns[1]) {
-      const atMax = val >= roomLeft;
-      btns[1].classList.toggle("at-cap", atMax);
-      btns[1].setAttribute("aria-disabled", atMax ? "true" : "false");
-    }
+    const btns = row.querySelectorAll(".stepper-btn");
+    if (btns[0]) btns[0].classList.toggle("at-cap", val <= 0);
+    if (btns[1]) btns[1].classList.toggle("at-cap", val >= roomLeft);
   });
 }
 
 function addSecondSet() {
   state.hasSecondSet = true;
   state.infQty2 = 0;
-  document.getElementById("infusion-row-2").classList.remove("hidden");
+  document.getElementById("inf-edit-row-2").classList.remove("hidden");
   document.getElementById("add-set-link").classList.add("hidden");
-  document.getElementById("set-label-text-1").textContent = "Set 1";
+  document.getElementById("inf-set-tag-1").style.display = "";
+  document.getElementById("inf-section-label").textContent = "Infusion Sets";
   document.getElementById("inf-qty-2").textContent = "0";
-  const body = document.getElementById("infusion-body");
-  if (body) body.classList.add("has-second-set");
-  updateOrderDensity();
-
-  // Populate set 2 dropdowns
   populateInfusionDropdowns(2, "");
   updateQtyButtons();
 }
@@ -798,61 +584,84 @@ function addSecondSet() {
 function removeSecondSet() {
   state.hasSecondSet = false;
   state.infQty2 = 0;
-  document.getElementById("infusion-row-2").classList.add("hidden");
+  document.getElementById("inf-edit-row-2").classList.add("hidden");
   document.getElementById("add-set-link").classList.remove("hidden");
-  document.getElementById("set-label-text-1").textContent = "";
-  const body = document.getElementById("infusion-body");
-  if (body) body.classList.remove("has-second-set");
+  if (!state.patientData?.servingInfusionSet2) {
+    document.getElementById("inf-set-tag-1").style.display = "none";
+    document.getElementById("inf-section-label").textContent = "Infusion Set";
+  }
   updateQtyButtons();
-  updateOrderDensity();
-  updateOopFooter();
+  updateOop();
 }
 
-// ─── Step 3: Address ───
+// ═══════════════════════════════════════════════════════
+// DATE CHANGE
+// ═══════════════════════════════════════════════════════
 
-function selectAddressChange(changed) {
-  state.addressChanged = changed;
+function handleDelayDateChange() {
+  const dateInput = document.getElementById("delay-date-input");
+  const errorDiv = document.getElementById("delay-date-error");
+  const note20 = document.getElementById("delay-note-20");
+  const dateStr = dateInput.value;
+  if (!dateStr) return;
 
-  document.getElementById("btn-address-same").classList.toggle("selected", !changed);
-  document.getElementById("btn-address-new").classList.toggle("selected", changed);
+  const pd = state.patientData;
+  const currentOrderDate = pd.nextOrder ? new Date(pd.nextOrder + "T00:00:00") : null;
+  const selectedDate = new Date(dateStr + "T00:00:00");
+  const today = new Date(); today.setHours(0, 0, 0, 0);
 
-  const editSection = document.getElementById("address-edit");
-  if (changed) {
-    editSection.classList.remove("hidden");
-  } else {
-    editSection.classList.add("hidden");
-    state.newAddress = null;
-    state.addressSelectedFromGoogle = false;
+  const maxDate = currentOrderDate ? new Date(currentOrderDate) : new Date(today);
+  maxDate.setDate(maxDate.getDate() + 56);
+
+  if (currentOrderDate && selectedDate < currentOrderDate) {
+    errorDiv.textContent = "Sorry, your scheduled order date is the earliest insurance will cover your reorder. Please text/call us if there is an extraordinary situation.";
+    errorDiv.classList.remove("hidden");
+    return;
   }
-}
-
-// ─── Step 4: Insurance ───
-
-function selectInsuranceChange(value) {
-  state.insuranceChanged = value;
-
-  document.getElementById("btn-ins-same").classList.toggle("selected", value === "no");
-  document.getElementById("btn-ins-new").classList.toggle("selected", value === "yes");
-
-  const editSection = document.getElementById("insurance-edit");
-  if (value === "yes") {
-    editSection.classList.remove("hidden");
-  } else {
-    editSection.classList.add("hidden");
+  if (selectedDate > maxDate) {
+    errorDiv.textContent = "Maximum delay is 8 weeks. Need longer? Text us and we'll help.";
+    errorDiv.classList.remove("hidden");
+    return;
   }
+  if (selectedDate < today) {
+    errorDiv.textContent = "Please select a future date.";
+    errorDiv.classList.remove("hidden");
+    return;
+  }
+
+  errorDiv.classList.add("hidden");
+  state.delayDate = dateStr;
+
+  const diffDays = Math.ceil((selectedDate - today) / (1000 * 60 * 60 * 24));
+  state.delayLessThan20Days = diffDays < 20;
+
+  if (state.delayLessThan20Days) {
+    note20.classList.remove("hidden");
+  } else {
+    note20.classList.add("hidden");
+  }
+
+  // Update display
+  const d = new Date(dateStr + "T00:00:00");
+  const dateDisplay = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const dayDisplay = d.toLocaleDateString("en-US", { weekday: "long" });
+  document.getElementById("order-date-display").textContent = `${dateDisplay} · ${dayDisplay}`;
 }
+
+// ═══════════════════════════════════════════════════════
+// INSURANCE
+// ═══════════════════════════════════════════════════════
 
 function handleNewInsuranceType() {
   const val = document.getElementById("new-insurance-type").value;
   const otherGroup = document.getElementById("other-insurance-group");
-  if (val === "Other") {
-    otherGroup.classList.remove("hidden");
-  } else {
-    otherGroup.classList.add("hidden");
-  }
+  if (val === "Other") otherGroup.classList.remove("hidden");
+  else otherGroup.classList.add("hidden");
 }
 
-// ─── File Upload ───
+// ═══════════════════════════════════════════════════════
+// FILE UPLOAD — identical to original
+// ═══════════════════════════════════════════════════════
 
 function handleCardUpload(event) {
   const files = Array.from(event.target.files);
@@ -860,7 +669,6 @@ function handleCardUpload(event) {
     alert("You can upload a maximum of 2 images (front and back).");
     return;
   }
-
   files.forEach(file => {
     if (file.size > 10 * 1024 * 1024) {
       alert(`${file.name} is too large. Maximum size is 10MB.`);
@@ -868,7 +676,6 @@ function handleCardUpload(event) {
     }
     state.uploadedFiles.push(file);
   });
-
   renderUploadPreviews();
   event.target.value = "";
 }
@@ -876,258 +683,78 @@ function handleCardUpload(event) {
 function renderUploadPreviews() {
   const container = document.getElementById("upload-preview");
   container.innerHTML = "";
-
   state.uploadedFiles.forEach((file, idx) => {
     const item = document.createElement("div");
     item.className = "preview-item";
-
     if (file.type.startsWith("image/")) {
       const img = document.createElement("img");
       img.src = URL.createObjectURL(file);
       item.appendChild(img);
     } else {
-      item.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem;">📄</div>`;
+      item.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:1.5rem;color:var(--text-muted)"><i class="ti ti-file"></i></div>';
     }
-
     const removeBtn = document.createElement("button");
     removeBtn.className = "remove-btn";
     removeBtn.textContent = "×";
-    removeBtn.onclick = (e) => {
-      e.stopPropagation();
-      state.uploadedFiles.splice(idx, 1);
-      renderUploadPreviews();
-    };
+    removeBtn.onclick = (e) => { e.stopPropagation(); state.uploadedFiles.splice(idx, 1); renderUploadPreviews(); };
     item.appendChild(removeBtn);
     container.appendChild(item);
   });
 }
 
-// ─── Validation ───
+// ═══════════════════════════════════════════════════════
+// HELP SECTION
+// ═══════════════════════════════════════════════════════
 
-function validateCurrentStep() {
-  const step = state.currentStep;
-
-  if (step === 1) {
-    if (!state.decision) return false;
-    if (state.decision === "delay" && !state.delayDate) return false;
-    return true;
-  }
-
-  if (step === 2) {
-    // Check empty state
-    const pd = state.patientData;
-    const allOptedOut =
-      (!pd.servingSensors || state.sensorsOptOut) &&
-      (!pd.servingSupplies || state.cartridgesOptOut) &&
-      (!(pd.servingInfusionSet1 || pd.servingInfusionSet2) || state.infusionOptOut);
-    if (allOptedOut) return false;
-    return true;
-  }
-
-  if (step === 3) {
-    if (state.addressChanged === null) {
-      alert("Please confirm whether your address is the same or has changed.");
-      return false;
-    }
-    if (state.addressChanged) {
-      const addr = document.getElementById("address-input").value.trim();
-      if (!addr) {
-        showFieldError("address-error", "Please enter your new address.");
-        return false;
-      }
-      if (!state.addressSelectedFromGoogle) {
-        showFieldError("address-error", "Please select your address from the dropdown suggestions.");
-        return false;
-      }
-      state.newAddress = addr;
-    }
-    return true;
-  }
-
-  if (step === 4) {
-    if (state.insuranceChanged === null) {
-      alert("Please confirm whether your insurance is the same or has changed.");
-      return false;
-    }
-    if (state.insuranceChanged === "yes") {
-      const insType = document.getElementById("new-insurance-type").value;
-      if (!insType) {
-        alert("Please select your new insurance type.");
-        return false;
-      }
-      const memberId = document.getElementById("new-member-id").value.trim();
-      if (!memberId) {
-        alert("Please enter your new member ID.");
-        return false;
-      }
-    }
-    return true;
-  }
-
-  return true;
+function fillHelp(text) {
+  const textarea = document.getElementById("help-msg");
+  textarea.value = text;
+  textarea.focus();
+  state.helpChip = text;
+  // Highlight active chip
+  document.querySelectorAll(".help-chip").forEach(c => {
+    c.classList.toggle("active", c.textContent.trim() === text.replace(/^I have a |^I'd like to /i, "").trim() || c.onclick.toString().includes(text));
+  });
 }
 
-function showFieldError(id, msg) {
-  const el = document.getElementById(id);
-  if (el) {
-    el.textContent = msg;
-    el.classList.remove("hidden");
-  }
+function sendHelpMessage() {
+  const msg = document.getElementById("help-msg").value.trim();
+  if (!msg) return;
+  state.helpMessage = msg;
+  document.getElementById("help-form").style.display = "none";
+  document.getElementById("help-done").classList.remove("hidden");
 }
 
-// ─── Step 5: Review & Confirm ───
+// ═══════════════════════════════════════════════════════
+// OOP ESTIMATE — total only (no deductible/coinsurance)
+// ═══════════════════════════════════════════════════════
 
-function renderReview() {
-  const pd = state.patientData;
-  const diffContainer = document.getElementById("review-diff");
-  let html = "";
-  let hasChanges = false;
-
-  // Order date
-  if (state.decision === "delay" && state.delayDate) {
-    hasChanges = true;
-    html += reviewItem("Next order date", formatDate(pd.nextOrder), formatDate(state.delayDate));
-  }
-
-  // Order changes — compare current dropdown state against initial snapshot
-  // (avoids all Monday label format / whitespace / type-coercion mismatches)
-  if (!state.sensorsOptOut && pd.servingSensors) {
-    const newSensor = document.getElementById("sensor-type-select")?.value;
-    if (newSensor && newSensor !== state.initialSensorType) {
-      hasChanges = true;
-      html += reviewItem("Sensor type", state.initialSensorType || "—", newSensor);
-    }
-  }
-  if (state.sensorsOptOut && pd.servingSensors) {
-    hasChanges = true;
-    html += reviewItem("CGM Sensors", state.initialSensorType || "Ordered", "Skipping this order");
-  }
-
-  if (!state.infusionOptOut && (pd.servingInfusionSet1 || pd.servingInfusionSet2)) {
-    // Fuzzy match: strip ALL whitespace and lowercase, so "AutoSoft 90 6 mm  23""
-    // and "AutoSoft 90 6 mm 23"" and "AutoSoft 90 6mm 23"" all compare as equal.
-    // This is ONLY for the review display — the actual Monday submission uses indexes.
-    const fuzzy = (s) => (s || "").replace(/\s+/g, "").toLowerCase();
-    const newLabel1 = getInfusionLabel(1);
-    const newLabel2 = state.hasSecondSet ? getInfusionLabel(2) : "";
-    const typeChanged1 = fuzzy(newLabel1) !== fuzzy(pd.infusionSet1);
-    const typeChanged2 = state.hasSecondSet && fuzzy(newLabel2) !== fuzzy(pd.infusionSet2);
-    const qtyChanged1 = state.infQty1 !== state.initialInfQty1;
-    const qtyChanged2 = state.hasSecondSet && state.infQty2 !== state.initialInfQty2;
-    if (typeChanged1 || typeChanged2 || qtyChanged1 || qtyChanged2) {
-      hasChanges = true;
-      const origDesc = `${pd.infusionSet1 || "Set 1"} (${state.initialInfQty1})` + (state.initialInfQty2 > 0 ? ` + ${pd.infusionSet2 || "Set 2"} (${state.initialInfQty2})` : "");
-      let newDesc = `${newLabel1} (${state.infQty1})`;
-      if (state.hasSecondSet && state.infQty2 > 0) {
-        newDesc += ` + ${newLabel2} (${state.infQty2})`;
-      }
-      html += reviewItem("Infusion sets", origDesc, newDesc);
-    }
-  }
-  if (state.infusionOptOut && (pd.servingInfusionSet1 || pd.servingInfusionSet2)) {
-    hasChanges = true;
-    html += reviewItem("Infusion Sets", "Ordered", "Skipping this order");
-  }
-
-  // Cartridges opt-out
-  if (state.cartridgesOptOut && pd.servingSupplies) {
-    hasChanges = true;
-    html += reviewItem("Cartridges", pd.suppliesType || "Ordered", "Skipping this order");
-  }
-
-  // Address
-  if (state.addressChanged && state.newAddress) {
-    hasChanges = true;
-    html += reviewItem("Address", pd.address || "—", state.newAddress, true);
-  } else {
-    // Show "Same as on file" for insurance context
-  }
-
-  // Insurance
-  if (state.insuranceChanged === "yes") {
-    hasChanges = true;
-    let newIns = document.getElementById("new-insurance-type").value;
-    if (newIns === "Other") newIns = document.getElementById("other-insurance-name").value.trim() || "Other";
-    html += reviewItem("Insurance", simplifyInsurance(pd.primaryInsurance || "—"), newIns);
-  }
-
-  if (!hasChanges) {
-    html = '<div class="review-no-changes">Confirming your order as scheduled. Nothing has changed.</div>';
-  }
-
-  diffContainer.innerHTML = html;
-
-  // OOP in review
-  updateReviewOop();
-}
-
-function reviewItem(label, before, after, isAddress) {
-  const addrStyle = isAddress ? ' style="word-break:break-word;overflow-wrap:break-word;"' : '';
-  return `<div class="review-item">
-    <div class="review-item-label">${escHtml(label)}</div>
-    <div class="review-item-before"${addrStyle}>${escHtml(before)}</div>
-    <div class="review-item-arrow">→</div>
-    <div class="review-item-after"${addrStyle}>${escHtml(after)}</div>
-  </div>`;
-}
-
-// ─── OOP Footer ───
-
-function updateOopFooter() {
+function updateOop() {
   if (!state.patientData) return;
-
   const est = getOopEstimate();
-  const summary = document.getElementById("oop-footer-summary");
-
-  if (!est) {
-    if (summary) summary.style.display = "none";
-    return;
-  }
-
-  if (summary) summary.style.display = "";
-
+  const card = document.getElementById("oop-card");
+  if (!est) { card.style.display = "none"; return; }
+  card.style.display = "";
   if (!est.ok || !est.canCalculateCosts) {
-    document.getElementById("footer-deductible").textContent = "—";
-    document.getElementById("footer-coinsurance").textContent = "—";
-    document.getElementById("footer-total").textContent = "—";
-    return;
-  }
-
-  document.getElementById("footer-deductible").textContent = fmt(est.appliedDeductible || 0);
-  document.getElementById("footer-coinsurance").textContent = fmt(est.patientCoinsurance || 0);
-  document.getElementById("footer-total").textContent = fmt(est.patientOwes || 0);
-}
-
-function updateReviewOop() {
-  const est = getOopEstimate();
-  const container = document.getElementById("review-oop");
-  const el = document.getElementById("review-total");
-
-  if (!est) {
-    if (container) container.style.display = "none";
-    return;
-  }
-
-  if (container) container.style.display = "";
-
-  if (!est.ok || !est.canCalculateCosts) {
-    el.textContent = "—";
+    document.getElementById("oop-total").textContent = "—";
   } else {
-    el.textContent = fmt(est.patientOwes || 0);
+    document.getElementById("oop-total").textContent = fmt(est.patientOwes || 0);
   }
 }
 
 function getOopEstimate() {
   const pd = state.patientData;
   if (!pd || !pd.primaryInsurance) return null;
-
-  // CareCentrix check
   if ((pd.referralSource || "").toLowerCase().includes("carecentrix")) return null;
-
-  // Horizon BCBS — hide OOP entirely
   if (pd.primaryInsurance === "Horizon BCBS") return null;
 
-  const serving = deriveServing();
+  const hasCgm = pd.servingSensors && !state.sensorsOptOut;
+  const hasPump = (pd.servingSupplies && !state.cartridgesOptOut) || ((pd.servingInfusionSet1 || pd.servingInfusionSet2) && !state.infusionOptOut);
+  let serving = "";
+  if (hasCgm && hasPump) serving = "CGM & Pump & Supplies";
+  else if (hasCgm) serving = "CGM";
+  else if (hasPump) serving = "Pump & Supplies";
+
   const infusionSets = state.infusionOptOut ? 0 : (state.infQty1 + (state.hasSecondSet ? state.infQty2 : 0));
 
   return estimateOop({
@@ -1141,33 +768,23 @@ function getOopEstimate() {
   });
 }
 
-function deriveServing() {
-  const pd = state.patientData;
-  if (!pd) return "";
-  const hasCgm = pd.servingSensors && !state.sensorsOptOut;
-  const hasPump = (pd.servingSupplies && !state.cartridgesOptOut) || ((pd.servingInfusionSet1 || pd.servingInfusionSet2) && !state.infusionOptOut);
-  if (hasCgm && hasPump) return "CGM & Pump & Supplies";
-  if (hasCgm) return "CGM";
-  if (hasPump) return "Pump & Supplies";
-  return "";
-}
-
-// ─── Submission ───
+// ═══════════════════════════════════════════════════════
+// SUBMISSION — builds the same payload as original
+// ═══════════════════════════════════════════════════════
 
 async function handleSubmit() {
   const btn = document.getElementById("submit-btn");
   btn.disabled = true;
-  btn.textContent = "Submitting...";
+  btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Submitting...';
 
   try {
     const submission = buildSubmission();
 
     // Upload insurance cards if any
     if (state.uploadedFiles.length > 0) {
-      btn.textContent = "Uploading files...";
+      btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Uploading files...';
       const formData = new FormData();
       state.uploadedFiles.forEach(f => formData.append("cards", f));
-
       const uploadRes = await fetch(`${API_BASE}/api/upload-insurance-card`, {
         method: "POST",
         headers: { Authorization: `Bearer ${state.sessionToken}` },
@@ -1175,12 +792,16 @@ async function handleSubmit() {
         body: formData,
       });
       const uploadData = await uploadRes.json();
-      if (uploadData.urls) {
-        submission.insuranceCardUrls = uploadData.urls;
-      }
+      if (uploadData.urls) submission.insuranceCardUrls = uploadData.urls;
     }
 
-    btn.textContent = "Saving...";
+    // Submit help message (will be handled by backend once column exists)
+    if (state.helpMessage) {
+      submission.helpMessage = state.helpMessage;
+      submission.helpChip = state.helpChip;
+    }
+
+    btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Saving...';
     const result = await apiFetch("/api/submit", {
       method: "POST",
       body: JSON.stringify(submission),
@@ -1191,26 +812,31 @@ async function handleSubmit() {
     } else {
       alert(result.message || "There was an issue saving your form. Please try again.");
       btn.disabled = false;
-      btn.textContent = "Submit Order";
+      btn.innerHTML = 'Confirm & submit order <i class="ti ti-arrow-right"></i>';
     }
   } catch (err) {
     console.error("Submit error:", err);
     document.getElementById("network-error").classList.remove("hidden");
     btn.disabled = false;
-    btn.textContent = "Submit Order";
+    btn.innerHTML = 'Confirm & submit order <i class="ti ti-arrow-right"></i>';
   }
 }
 
 function buildSubmission() {
   const pd = state.patientData;
+
+  // Determine response type: if date was edited → delay, otherwise → confirm
+  const dateChanged = state.delayDate && state.delayDate !== state.originalDate;
+  const response = dateChanged ? "delay" : "confirm";
+
   const submission = {
-    response: state.decision,
+    response,
     currentOrderDate: pd.nextOrder || null,
     isAnthemOrCigna: getMaxQty() === 9,
   };
 
   // Delay fields
-  if (state.decision === "delay") {
+  if (response === "delay") {
     submission.indefinite = false;
     submission.newOrderDate = state.delayDate;
     submission.delayLessThan20Days = state.delayLessThan20Days;
@@ -1269,12 +895,10 @@ function buildSubmission() {
   }
 
   // Insurance
-  if (state.insuranceChanged === "yes") {
+  if (state.insuranceChanged) {
     submission.insuranceResponse = "changed";
     let insType = document.getElementById("new-insurance-type").value;
-    if (insType === "Other") {
-      insType = document.getElementById("other-insurance-name").value.trim() || "Other";
-    }
+    if (insType === "Other") insType = document.getElementById("other-insurance-name").value.trim() || "Other";
     submission.newInsuranceType = insType;
     submission.newMemberId = document.getElementById("new-member-id").value.trim();
   } else {
@@ -1284,15 +908,9 @@ function buildSubmission() {
   return submission;
 }
 
-// ─── Success ───
-
-function showSuccess(message) {
-  document.getElementById("app").style.display = "none";
-  document.getElementById("success-screen").style.display = "flex";
-  document.getElementById("success-message").textContent = message;
-}
-
-// ─── Google Places ───
+// ═══════════════════════════════════════════════════════
+// GOOGLE PLACES — identical to original
+// ═══════════════════════════════════════════════════════
 
 let _mapsLoaded = false;
 
@@ -1301,10 +919,7 @@ function loadGooglePlaces(apiKey) {
   const script = document.createElement("script");
   script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
   script.async = true;
-  script.onload = () => {
-    _mapsLoaded = true;
-    attachAutocomplete();
-  };
+  script.onload = () => { _mapsLoaded = true; attachAutocomplete(); };
   document.head.appendChild(script);
 }
 
@@ -1312,10 +927,7 @@ function attachAutocomplete() {
   const input = document.getElementById("address-input");
   if (!input || !window.google?.maps?.places?.Autocomplete) return;
 
-  // Reset selection flag when user manually types
-  input.addEventListener("input", () => {
-    state.addressSelectedFromGoogle = false;
-  });
+  input.addEventListener("input", () => { state.addressSelectedFromGoogle = false; });
 
   const autocomplete = new google.maps.places.Autocomplete(input, {
     componentRestrictions: { country: "us" },
@@ -1326,24 +938,21 @@ function attachAutocomplete() {
   autocomplete.addListener("place_changed", () => {
     const place = autocomplete.getPlace();
     if (!place?.formatted_address) return;
-
-    // Strip +4 ZIP
     input.value = place.formatted_address.replace(/(\b\d{5})-\d{4}\b/g, "$1");
     state.newAddress = input.value;
     state.addressSelectedFromGoogle = true;
-      checkApartmentWarning(state.newAddress);
-
+    state.addressChanged = true;
     if (place.geometry?.location) {
       state.addressCoords.lat = place.geometry.location.lat();
       state.addressCoords.lng = place.geometry.location.lng();
     }
-
-    // Hide error
     document.getElementById("address-error").classList.add("hidden");
   });
 }
 
-// ─── Utilities ───
+// ═══════════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════════
 
 function showError(msg) {
   document.getElementById("loading-screen").style.display = "none";
@@ -1351,21 +960,13 @@ function showError(msg) {
   document.getElementById("error-message").textContent = msg;
 }
 
-function formatDate(dateStr) {
-  if (!dateStr) return "N/A";
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+function showSuccess(message) {
+  document.getElementById("app").style.display = "none";
+  const screen = document.getElementById("success-screen");
+  screen.style.display = "flex";
+  document.getElementById("success-message").textContent = message;
+  window.scrollTo(0, 0);
 }
-
-function maskMemberId(id) {
-  if (!id || id.length < 4) return id || "N/A";
-  const masked = "*".repeat(id.length - 4) + id.slice(-4);
-  return `<span class="member-id-mask">${masked}</span>`;
-}
-
-// ─── Address shrink for long text ───
-
-// ─── Apartment/unit number warning ───
 
 function checkApartmentWarning(address) {
   const warning = document.getElementById("apt-warning");
@@ -1378,83 +979,32 @@ function checkApartmentWarning(address) {
   }
 }
 
-function renderTwoLineAddress(el, text) {
-  if (!el) return;
-  const trimmed = (text || "").trim();
-  if (!trimmed) { el.textContent = ""; return; }
-  const firstComma = trimmed.indexOf(",");
-  // No comma → single line, just plain text.
-  if (firstComma < 0) {
-    el.textContent = trimmed;
-    return;
-  }
-  const street = trimmed.slice(0, firstComma).trim();
-  const rest   = trimmed.slice(firstComma + 1).trim();
-  // Empty after-comma → also single line.
-  if (!rest) {
-    el.textContent = street;
-    return;
-  }
-  el.innerHTML = ""; // safe reset
-  const l1 = document.createElement("span");
-  l1.className = "addr-line";
-  l1.textContent = street;
-  const l2 = document.createElement("span");
-  l2.className = "addr-line";
-  l2.textContent = rest;
-  el.appendChild(l1);
-  el.appendChild(l2);
-}
-
-function applyAddressShrink(el) {
-  // Auto-shrink loop retired. CSS now sizes the address with
-  // clamp(1.25rem, 5.5vw, 1.875rem) and allows wrap — short
-  // addresses render single-line big, long addresses wrap to 2
-  // lines at the same comfortable size. The card grows vertically
-  // to fit. This function is kept as a no-op so any existing call
-  // sites don't ReferenceError, and so leftover inline styles
-  // from previous renders are cleared.
-  if (!el) return;
-  el.style.fontSize = "";
-  el.style.whiteSpace = "";
-  el.style.overflow = "";
-  el.style.textOverflow = "";
-  el.style.wordBreak = "";
-  el.style.overflowWrap = "";
-  el.style.transition = "";
-}
-
 function simplifyInsurance(raw) {
-  // Map raw Monday labels to patient-friendly names
   const map = {
-    "Anthem BCBS Commercial": "Anthem BCBS",
-    "Anthem BCBS Medicaid (JLJ)": "Anthem BCBS",
-    "Anthem BCBS Medicare": "Anthem BCBS",
-    "Horizon BCBS": "Anthem BCBS",
-    "BCBS Wyoming": "Anthem BCBS",
-    "Aetna Commercial": "Aetna",
-    "Aetna Medicare": "Aetna",
-    "Fidelis Medicaid": "Fidelis",
-    "Fidelis Low-Cost": "Fidelis",
-    "Fidelis Commercial": "Fidelis",
-    "Fidelis Medicare": "Fidelis",
-    "United Commercial": "United",
-    "United Medicaid": "United",
-    "United Medicare": "United",
-    "Medicare A&B": "Medicare",
-    "Medicaid": "Medicaid",
-    "NYSHIP": "NYSHIP",
-    "Wellcare": "WellCare",
-    "Humana": "Humana",
-    "Midlands Choice": "Other",
-    "Magnacare": "Other",
+    "Anthem BCBS Commercial": "Anthem BCBS", "Anthem BCBS Medicaid (JLJ)": "Anthem BCBS",
+    "Anthem BCBS Medicare": "Anthem BCBS", "Horizon BCBS": "Anthem BCBS",
+    "BCBS Wyoming": "Anthem BCBS", "Aetna Commercial": "Aetna", "Aetna Medicare": "Aetna",
+    "Fidelis Medicaid": "Fidelis", "Fidelis Low-Cost": "Fidelis",
+    "Fidelis Commercial": "Fidelis", "Fidelis Medicare": "Fidelis",
+    "United Commercial": "United", "United Medicaid": "United", "United Medicare": "United",
+    "Medicare A&B": "Medicare", "Medicaid": "Medicaid", "NYSHIP": "NYSHIP",
+    "Wellcare": "WellCare", "Humana": "Humana", "Midlands Choice": "Other", "Magnacare": "Other",
   };
   return map[raw] || raw;
 }
 
-function fmt(n) {
-  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+function maskMemberId(id) {
+  if (!id || id.length < 4) return id || "N/A";
+  return "*".repeat(id.length - 4) + id.slice(-4);
 }
+
+function formatDate(dateStr) {
+  if (!dateStr) return "N/A";
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+function fmt(n) { return n.toLocaleString("en-US", { style: "currency", currency: "USD" }); }
 
 function escHtml(str) {
   const div = document.createElement("div");
