@@ -126,14 +126,7 @@ function renderPage() {
     const dayStr = d.toLocaleDateString("en-US", { weekday: "long" });
     document.getElementById("order-date-display").textContent = `${dateStr} · ${dayStr}`;
 
-    // Set date input constraints
-    const dateInput = document.getElementById("delay-date-input");
-    dateInput.value = nextOrder;
-    dateInput.min = nextOrder;
-    const maxDate = new Date(d);
-    maxDate.setDate(maxDate.getDate() + 56);
-    dateInput.max = maxDate.toISOString().split("T")[0];
-    dateInput.addEventListener("change", handleDelayDateChange);
+    // Postpone buttons use the original date as the base — stored in state.originalDate
   } else {
     document.getElementById("order-date-display").textContent = "Not scheduled";
   }
