@@ -770,6 +770,89 @@ function getOopEstimate() {
 // SUBMISSION — builds the same payload as original
 // ═══════════════════════════════════════════════════════
 
+
+// ═══════════════════════════════════════════════════════
+// SUBMIT PROGRESS OVERLAY
+// ═══════════════════════════════════════════════════════
+
+function showSubmitOverlay() {
+  let overlay = document.getElementById("submit-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "submit-overlay";
+    overlay.className = "submit-overlay";
+    overlay.innerHTML = `
+      <div class="progress-icon"></div>
+      <div class="progress-msg" id="progress-msg">Preparing your changes...</div>
+      <div class="progress-sub">This usually takes just a few seconds</div>
+      <div class="progress-steps" id="progress-steps">
+        <div class="step active" id="step-0"><span class="step-dot"></span>Reviewing your order</div>
+        <div class="step" id="step-1"><span class="step-dot"></span>Saving to your account</div>
+        <div class="step" id="step-2"><span class="step-dot"></span>Confirming with care team</div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  }
+  // Reset all steps
+  overlay.querySelectorAll(".step").forEach((s, i) => {
+    s.className = i === 0 ? "step active" : "step";
+    s.querySelector(".step-dot").textContent = "";
+  });
+  document.getElementById("progress-msg").textContent = "Preparing your changes...";
+  requestAnimationFrame(() => overlay.classList.add("visible"));
+
+  // Advance steps on timers (visual pacing — real completion comes from API)
+  overlay._timers = [
+    setTimeout(() => advanceStep(0, "Reviewing your order"), 800),
+    setTimeout(() => {
+      advanceStep(1, "Saving to your account");
+      document.getElementById("progress-msg").textContent = "Updating your records...";
+    }, 2000),
+    setTimeout(() => {
+      advanceStep(2, "Confirming with care team");
+      document.getElementById("progress-msg").textContent = "Almost there...";
+    }, 4000),
+  ];
+}
+
+function advanceStep(index, label) {
+  // Mark previous steps as done
+  for (let i = 0; i < index; i++) {
+    const prev = document.getElementById("step-" + i);
+    if (prev) {
+      prev.className = "step done";
+      prev.querySelector(".step-dot").textContent = "\u2713";
+    }
+  }
+  // Mark current as active
+  const curr = document.getElementById("step-" + index);
+  if (curr) curr.className = "step active";
+}
+
+function completeOverlay(success) {
+  const overlay = document.getElementById("submit-overlay");
+  if (!overlay) return;
+  // Clear timers
+  (overlay._timers || []).forEach(clearTimeout);
+  if (success) {
+    // Mark all done
+    overlay.querySelectorAll(".step").forEach(s => {
+      s.className = "step done";
+      s.querySelector(".step-dot").textContent = "\u2713";
+    });
+    document.getElementById("progress-msg").textContent = "All set!";
+  }
+}
+
+function hideOverlay() {
+  const overlay = document.getElementById("submit-overlay");
+  if (overlay) {
+    (overlay._timers || []).forEach(clearTimeout);
+    overlay.classList.remove("visible");
+    setTimeout(() => overlay.remove(), 300);
+  }
+}
+
 async function handleSubmit() {
   // Validate address if user opened the address panel and typed something
   const addrPanel = document.getElementById("panel-addr");
@@ -820,6 +903,7 @@ async function handleSubmit() {
     }
 
     btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Saving...';
+    showSubmitOverlay();
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
@@ -842,28 +926,34 @@ async function handleSubmit() {
     const result = await res.json();
 
     if (res.ok && result.success) {
+      completeOverlay(true);
+      await new Promise(r => setTimeout(r, 600));
+      hideOverlay();
       showSuccess(result.message);
     } else if (res.status === 207 || result.partial) {
-      // Partial Monday write failure — some fields saved, some didn't
+      hideOverlay();
       alert("Some of your information couldn't be saved. Please reload the page and try again. If the problem continues, text or call us.");
       btn.disabled = false;
       btn.textContent = 'Confirm';
     } else if (res.status === 409) {
-      // Double-submit lock
+      hideOverlay();
       alert(result.error || "Your form is already being submitted. Please wait a moment.");
       btn.disabled = false;
       btn.textContent = 'Confirm';
     } else if (result.error) {
+      hideOverlay();
       alert(result.error);
       btn.disabled = false;
       btn.textContent = 'Confirm';
     } else {
+      hideOverlay();
       alert("Something went wrong saving your form. Please reload the page and try again.");
       btn.disabled = false;
       btn.textContent = 'Confirm';
     }
   } catch (err) {
     console.error("Submit error:", err);
+    hideOverlay();
     const msg = err.name === "AbortError"
       ? "The request is taking too long. Your internet may be slow. Please reload the page and try again."
       : "We couldn't reach our server. Please check your connection, reload the page, and try again.";
