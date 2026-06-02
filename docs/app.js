@@ -788,7 +788,7 @@ function showSubmitOverlay() {
       <div class="progress-steps" id="progress-steps">
         <div class="step active" id="step-0"><span class="step-dot"></span>Reviewing your order</div>
         <div class="step" id="step-1"><span class="step-dot"></span>Saving to your account</div>
-        <div class="step" id="step-2"><span class="step-dot"></span>Confirming with care team</div>
+        <div class="step" id="step-2"><span class="step-dot"></span>Confirming receipt</div>
       </div>
     `;
     document.body.appendChild(overlay);
@@ -809,7 +809,7 @@ function showSubmitOverlay() {
       document.getElementById("progress-msg").textContent = "Updating your records...";
     }, 2000),
     setTimeout(() => {
-      advanceStep(2, "Confirming with care team");
+      advanceStep(2, "Confirming receipt");
       document.getElementById("progress-msg").textContent = "Almost there...";
     }, 4000),
   ];
