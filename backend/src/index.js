@@ -324,18 +324,20 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
     }
 
     try {
-      // Check if this patient already submitted successfully (prevents double-writes on lost responses)
-      if (await hasSubmitted(req.uid)) {
+      const submission = req.body;
+
+      // Idempotency: if this patient already submitted a real order response,
+      // return cached success to prevent double-writes (e.g. lost response on bad internet).
+      // NEVER block help-only messages — patients can send multiple.
+      if (submission.response !== "help-only" && await hasSubmitted(req.uid)) {
         const messages = {
           confirm: "Thank you! Your order has been confirmed. We'll begin processing it shortly. Please reach out if anything changes.",
           delay: "Thank you! Your order has been successfully delayed. We'll reach out again before your new order date.",
           cancel: "We're sad to see you go! We'll cancel all ongoing reorders. Please text/call us if this was a mistake.",
         };
-        console.log(`[api] Duplicate submit detected for UID ${req.uid} — returning cached success`);
-        return res.json({ success: true, message: messages[req.body.response] || messages.confirm });
+        console.log(`[api] Duplicate submit detected for UID ${req.uid} (response: ${submission.response}) — returning cached success`);
+        return res.json({ success: true, message: messages[submission.response] || messages.confirm });
       }
-
-      const submission = req.body;
 
       // Validate required fields
       if (!submission.response || !["confirm", "delay", "cancel", "help-only"].includes(submission.response)) {
@@ -426,7 +428,10 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
       }
 
       // Mark as submitted so duplicate requests return cached success
-      await markSubmitted(req.uid);
+      // Only for real order responses — help-only messages can be sent multiple times
+      if (submission.response !== "help-only") {
+        await markSubmitted(req.uid);
+      }
 
       res.json({ success: true, message });
 

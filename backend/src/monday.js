@@ -765,8 +765,7 @@ async function getPatientsAt20DaysOut() {
   const safeBoard = validateNumericId(SUBSCRIPTION_BOARD_ID, "board ID");
   const safeDaysCol = validateColumnId(COLUMNS.DAYS_TO_ORDER);
 
-  const PAGE_SIZE = 100;
-  const MAX_PAGES = 20; // Safety cap: 2000 patients max
+  const PAGE_SIZE = 500;
   const allItems = [];
   let cursor = null;
   let page = 0;
@@ -794,7 +793,7 @@ async function getPatientsAt20DaysOut() {
   page++;
 
   // Subsequent pages — use next_items_page with cursor
-  while (cursor && page < MAX_PAGES) {
+  while (cursor) {
     console.log(`[monday] Fetching page ${page + 1} of 20-days-out patients (cursor: ${cursor.slice(0, 20)}...)`);
 
     const nextData = await mondayQuery(`{
@@ -821,10 +820,6 @@ async function getPatientsAt20DaysOut() {
     if (cursor) {
       await new Promise((r) => setTimeout(r, 500));
     }
-  }
-
-  if (cursor) {
-    console.warn(`[monday] Hit MAX_PAGES (${MAX_PAGES}) — there may be more patients not fetched`);
   }
 
   console.log(`[monday] Total 20-days-out patients fetched: ${allItems.length} across ${page} page(s)`);
