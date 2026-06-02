@@ -362,17 +362,21 @@ async function processReorderSubmission(uid, submission) {
   };
 
   const responseIndex = responseMap[submission.response];
-  if (responseIndex === undefined) throw new Error(`Invalid response: ${submission.response}`);
 
-  tasks.push({
-    label: "Patient Order Response",
-    fn: () => writeStatusIndex(itemId, COLUMNS.PATIENT_ORDER_RESPONSE, responseIndex),
-  });
+  // help-only messages skip order response / timestamp writes
+  if (submission.response !== "help-only") {
+    if (responseIndex === undefined) throw new Error(`Invalid response: ${submission.response}`);
 
-  tasks.push({
-    label: "Patient Response Timestamp",
-    fn: () => writeText(itemId, COLUMNS.PATIENT_RESPONSE_TIMESTAMP, now),
-  });
+    tasks.push({
+      label: "Patient Order Response",
+      fn: () => writeStatusIndex(itemId, COLUMNS.PATIENT_ORDER_RESPONSE, responseIndex),
+    });
+
+    tasks.push({
+      label: "Patient Response Timestamp",
+      fn: () => writeText(itemId, COLUMNS.PATIENT_RESPONSE_TIMESTAMP, now),
+    });
+  }
 
   // ─── Handle response-specific logic ───
 

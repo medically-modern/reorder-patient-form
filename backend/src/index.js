@@ -327,7 +327,7 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
       const submission = req.body;
 
       // Validate required fields
-      if (!submission.response || !["confirm", "delay", "cancel"].includes(submission.response)) {
+      if (!submission.response || !["confirm", "delay", "cancel", "help-only"].includes(submission.response)) {
         return res.status(400).json({ error: "Invalid response. Must be confirm, delay, or cancel." });
       }
 
