@@ -820,13 +820,13 @@ async function handleSubmit() {
     } else {
       alert(result.message || "There was an issue saving your form. Please try again.");
       btn.disabled = false;
-      btn.innerHTML = 'Confirm & submit order <i class="ti ti-arrow-right"></i>';
+      btn.textContent = 'Confirm Medically Modern Delivery';
     }
   } catch (err) {
     console.error("Submit error:", err);
     document.getElementById("network-error").classList.remove("hidden");
     btn.disabled = false;
-    btn.innerHTML = 'Confirm & submit order <i class="ti ti-arrow-right"></i>';
+    btn.textContent = 'Confirm Medically Modern Delivery';
   }
 }
 

@@ -6,7 +6,7 @@
   <title>Medically Modern — Confirm Your Order</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.7.0/tabler-icons.min.css">
   <link rel="stylesheet" href="styles.css">
   <meta name="theme-color" content="#80adaa">
@@ -287,22 +287,6 @@
         </div>
       </section>
 
-      <!-- ═══ 5. NEED A HAND ═══ -->
-      <section class="card" data-accent="pink">
-        <div class="card-head">
-          <span class="card-label"><span class="card-icon"><i class="ti ti-message-circle"></i></span> Need a hand?</span>
-        </div>
-        <div id="help-form">
-          <p class="card-sub" style="margin:8px 0 12px">Message your care team — we usually reply the same day.</p>
-          <div class="help-chips">
-            <button class="help-chip" onclick="fillHelp('I have a question about my items')">Question about items</button>
-            <button class="help-chip" onclick="fillHelp('I have a billing question')">Billing question</button>
-            <button class="help-chip" onclick="fillHelp('I\'d like to speak with someone')">Talk to a person</button>
-          </div>
-          <textarea id="help-msg" class="form-textarea" placeholder="Type your message…" rows="3"></textarea>
-        </div>
-      </section>
-
       <!-- ═══ OOP Estimate ═══ -->
       <div class="oop-card" id="oop-card" style="display:none">
         <div class="oop-amount" id="oop-total">$0.00</div>
@@ -312,9 +296,22 @@
 
       <!-- ═══ Submit ═══ -->
       <button class="cta-btn" id="submit-btn" onclick="handleSubmit()">
-        Confirm &amp; submit order <i class="ti ti-arrow-right"></i>
+        Confirm Medically Modern Delivery
       </button>
       <p class="legal-text">By submitting you authorize this resupply shipment.</p>
+
+      <!-- ═══ NEED A HAND ═══ -->
+      <section class="card" data-accent="pink">
+        <div class="card-head">
+          <span class="card-label"> Need a hand?</span>
+        </div>
+        <div id="help-form">
+          <p class="card-sub" style="margin:0 0 14px">Message your care team — we reply quickly.</p>
+          <textarea id="help-msg" class="form-textarea" placeholder="Type your message…" rows="3"></textarea>
+        </div>
+      </section>
+
+      <p class="page-foot">MEDICALLY MODERN · SECURE</p>
 
     </div><!-- /cards-wrap -->
   </div><!-- /app -->
