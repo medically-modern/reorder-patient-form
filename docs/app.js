@@ -195,7 +195,7 @@ function renderProductRows() {
   if (pd.servingSupplies) {
     const row = document.getElementById("prod-cartridges");
     row.style.display = "";
-    document.getElementById("prod-cartridges-name").textContent = pd.suppliesType || "Cartridges";
+    document.getElementById("prod-cartridges-name").textContent = (pd.suppliesType || "Pump") + " cartridge";
   }
 }
 
@@ -843,13 +843,13 @@ async function handleSubmit() {
     } else {
       alert(result.message || "There was an issue saving your form. Please try again.");
       btn.disabled = false;
-      btn.textContent = 'Confirm Medically Modern Delivery';
+      btn.textContent = 'Confirm';
     }
   } catch (err) {
     console.error("Submit error:", err);
     document.getElementById("network-error").classList.remove("hidden");
     btn.disabled = false;
-    btn.textContent = 'Confirm Medically Modern Delivery';
+    btn.textContent = 'Confirm';
   }
 }
 
@@ -1027,9 +1027,9 @@ function checkApartmentWarning(address) {
 
 function simplifyInsurance(raw) {
   const map = {
-    "Anthem BCBS Commercial": "Anthem BCBS", "Anthem BCBS Medicaid (JLJ)": "Anthem BCBS",
-    "Anthem BCBS Medicare": "Anthem BCBS", "Horizon BCBS": "Anthem BCBS",
-    "BCBS Wyoming": "Anthem BCBS", "Aetna Commercial": "Aetna", "Aetna Medicare": "Aetna",
+    "Anthem BCBS Commercial": "Anthem / BCBS", "Anthem BCBS Medicaid (JLJ)": "Anthem / BCBS",
+    "Anthem BCBS Medicare": "Anthem / BCBS", "Horizon BCBS": "Anthem / BCBS",
+    "BCBS Wyoming": "Anthem / BCBS", "Aetna Commercial": "Aetna", "Aetna Medicare": "Aetna",
     "Fidelis Medicaid": "Fidelis", "Fidelis Low-Cost": "Fidelis",
     "Fidelis Commercial": "Fidelis", "Fidelis Medicare": "Fidelis",
     "United Commercial": "United", "United Medicaid": "United", "United Medicare": "United",
