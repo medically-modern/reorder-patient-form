@@ -702,7 +702,32 @@ function fillHelp(text) {
   });
 }
 
-// sendHelpMessage removed — help text is captured on form submit
+async function submitCareMessage() {
+  const msg = document.getElementById("help-msg")?.value?.trim();
+  if (!msg) { alert("Please type a message first."); return; }
+  const btn = document.getElementById("care-submit-btn");
+  btn.disabled = true;
+  btn.textContent = "Sending...";
+  try {
+    await apiFetch("/api/submit", {
+      method: "POST",
+      body: JSON.stringify({
+        response: "help-only",
+        helpMessage: msg,
+        helpChip: state.helpChip,
+        currentOrderDate: state.patientData?.nextOrder || null,
+      }),
+    });
+    btn.textContent = "Sent!";
+    document.getElementById("help-msg").value = "";
+    setTimeout(() => { btn.textContent = "Submit To Care Team"; btn.disabled = false; }, 3000);
+  } catch (err) {
+    console.error("Care message error:", err);
+    btn.textContent = "Submit To Care Team";
+    btn.disabled = false;
+    alert("Couldn't send your message. Please try again.");
+  }
+}
 
 // ═══════════════════════════════════════════════════════
 // OOP ESTIMATE — total only (no deductible/coinsurance)
