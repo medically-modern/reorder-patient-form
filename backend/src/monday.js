@@ -289,7 +289,9 @@ async function getPatientData(uid) {
     servingInfusionSet2: isServing(infusionSet2),
 
     sensorsType: isServing(sensorsType) ? sensorsType : null,
+    cgmQty: isServing(sensorsType) ? col(COLUMNS.CGM_QTY) : null,
     suppliesType: isServing(suppliesType) ? suppliesType : null,
+    cartridgeQty: isServing(suppliesType) ? col(COLUMNS.CARTRIDGE_QTY) : null,
     infusionSet1: isServing(infusionSet1) ? infusionSet1 : null,
     infQty1: isServing(infusionSet1) ? col(COLUMNS.INF_QTY_1) : null,
     infusionSet2: isServing(infusionSet2) ? infusionSet2 : null,

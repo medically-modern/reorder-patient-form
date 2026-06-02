@@ -166,6 +166,12 @@ function renderProductRows() {
     const row = document.getElementById("prod-sensors");
     row.style.display = "";
     document.getElementById("prod-sensors-name").textContent = pd.sensorsType || "CGM Sensor";
+    const rawCgm = parseInt(pd.cgmQty, 10);
+    const cgmQty = isNaN(rawCgm) ? 3 : rawCgm;
+    const sensorQtyEl = document.getElementById("prod-sensors-qty");
+    const sensorUnitEl = document.getElementById("prod-sensors-unit");
+    if (sensorQtyEl) sensorQtyEl.textContent = String(cgmQty);
+    if (sensorUnitEl) sensorUnitEl.textContent = cgmQty === 0 ? "SKIPPED" : (cgmQty === 1 ? "box" : "boxes");
   }
 
   // Infusion Set 1
@@ -173,10 +179,11 @@ function renderProductRows() {
     const row = document.getElementById("prod-inf1");
     row.style.display = "";
     document.getElementById("prod-inf1-name").textContent = pd.infusionSet1 || "Infusion Set";
-    const qty1 = parseInt(pd.infQty1, 10) || 3;
+    const raw1 = parseInt(pd.infQty1, 10);
+    const qty1 = isNaN(raw1) ? 3 : raw1;
     state.infQty1 = qty1;
     document.getElementById("prod-inf1-qty").textContent = String(qty1);
-    document.getElementById("prod-inf1-unit").textContent = qty1 === 1 ? "box" : "boxes";
+    document.getElementById("prod-inf1-unit").textContent = qty1 === 0 ? "SKIPPED" : (qty1 === 1 ? "box" : "boxes");
   }
 
   // Infusion Set 2
@@ -185,7 +192,8 @@ function renderProductRows() {
     row.style.display = "";
     state.hasSecondSet = true;
     document.getElementById("prod-inf2-name").textContent = pd.infusionSet2 || "Infusion Set 2";
-    const qty2 = parseInt(pd.infQty2, 10) || 0;
+    const raw2 = parseInt(pd.infQty2, 10);
+    const qty2 = isNaN(raw2) ? 0 : raw2;
     state.infQty2 = qty2;
     document.getElementById("prod-inf2-qty").textContent = String(qty2);
     document.getElementById("prod-inf2-unit").textContent = qty2 === 1 ? "box" : "boxes";
@@ -196,6 +204,12 @@ function renderProductRows() {
     const row = document.getElementById("prod-cartridges");
     row.style.display = "";
     document.getElementById("prod-cartridges-name").textContent = (pd.suppliesType || "Pump") + " cartridge";
+    const rawCart = parseInt(pd.cartridgeQty, 10);
+    const cartQty = isNaN(rawCart) ? 3 : rawCart;
+    const cartQtyEl = document.getElementById("prod-cartridges-qty");
+    const cartUnitEl = document.getElementById("prod-cartridges-unit");
+    if (cartQtyEl) cartQtyEl.textContent = String(cartQty);
+    if (cartUnitEl) cartUnitEl.textContent = cartQty === 0 ? "SKIPPED" : (cartQty === 1 ? "box" : "boxes");
   }
 }
 
