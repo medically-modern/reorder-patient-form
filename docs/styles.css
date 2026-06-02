@@ -125,21 +125,11 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
 .card:nth-child(5){animation-delay:.23s}
 @keyframes cardIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
 
-/* Card accents */
-.card[data-accent="amber"]{border-color:var(--amber-border)}
-.card[data-accent="amber"] .card-icon{background:var(--amber-bg);color:var(--amber)}
+/* Card accents — all cards use uniform border, only label color varies */
 .card[data-accent="amber"] .card-label{color:var(--amber)}
-.card[data-accent="green"]{border-color:var(--green-border)}
-.card[data-accent="green"] .card-icon{background:var(--green-bg);color:var(--green)}
 .card[data-accent="green"] .card-label{color:var(--green)}
-.card[data-accent="blue"]{border-color:var(--blue-border)}
-.card[data-accent="blue"] .card-icon{background:var(--blue-bg);color:var(--blue)}
 .card[data-accent="blue"] .card-label{color:var(--blue)}
-.card[data-accent="violet"]{border-color:var(--violet-border)}
-.card[data-accent="violet"] .card-icon{background:var(--violet-bg);color:var(--violet)}
 .card[data-accent="violet"] .card-label{color:var(--violet)}
-.card[data-accent="pink"]{border-color:var(--pink-border)}
-.card[data-accent="pink"] .card-icon{background:var(--pink-bg);color:var(--pink)}
 .card[data-accent="pink"] .card-label{color:var(--pink)}
 
 /* Card header */
@@ -149,7 +139,11 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
   font-family:'IBM Plex Mono',monospace; font-size:1.12rem;
   letter-spacing:.02em; text-transform:uppercase; font-weight:700;
 }
-.card-icon { display:none; }
+/* Force-hide icon badges — Tabler icon CSS fights specificity */
+.card-icon,
+.card-icon *,
+.card-head .card-icon,
+span.card-icon { display:none !important; width:0 !important; height:0 !important; overflow:hidden !important; margin:0 !important; padding:0 !important; }
 
 /* Edit button */
 .edit-btn {
@@ -161,7 +155,7 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
 }
 .edit-btn:hover{border-color:var(--brand);color:var(--brand)}
 .edit-btn:active{transform:scale(.97)}
-.edit-btn i{font-size:14px}
+.edit-btn i{display:none}
 
 .card-value { font-family:'Poppins',sans-serif; font-size:1.04rem; font-weight:600; color:var(--text); margin-top:0; letter-spacing:-.01em; }
 .card-sub { font-size:.86rem; color:var(--text-muted); margin-top:3px; line-height:1.45; }
@@ -176,7 +170,9 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
 .product-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 0}
 .product-row+.product-row{border-top:1px solid var(--border-light)}
 .product-row:first-child{border-top:0;padding-top:0}
-.product-icon{display:none}
+.product-icon,
+.product-icon *,
+div.product-icon { display:none !important; width:0 !important; height:0 !important; overflow:hidden !important; margin:0 !important; padding:0 !important; }
 .product-body{flex:1;min-width:0}
 .product-name{font-family:'Poppins',sans-serif;font-size:.92rem;font-weight:600;color:var(--text);letter-spacing:0}
 .product-meta{font-family:'IBM Plex Mono',monospace;font-size:.74rem;color:var(--text-muted);margin-top:2px;letter-spacing:.02em}
