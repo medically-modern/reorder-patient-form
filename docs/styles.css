@@ -269,16 +269,15 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
 /* ─── Care submit button ─── */
 .care-submit-btn{
   margin-top:11px;width:100%;
-  font-family:'Poppins',sans-serif;font-weight:600;font-size:.92rem;color:#fff;
-  background:var(--brand-dark);border:0;cursor:pointer;
-  border-radius:99px;padding:11px 16px;
-  box-shadow:0 6px 16px rgba(79,133,129,.22);
-  transition:transform .15s ease, box-shadow .15s ease;
+  font-family:'Poppins',sans-serif;font-weight:500;font-size:.88rem;color:var(--text-muted);
+  background:transparent;border:1px solid var(--border);cursor:pointer;
+  border-radius:99px;padding:10px 16px;
+  transition:all .15s ease;
   -webkit-tap-highlight-color:transparent;
 }
-.care-submit-btn:hover{transform:translateY(-1px);box-shadow:0 10px 20px rgba(79,133,129,.30)}
-.care-submit-btn:active{transform:translateY(0) scale(.99)}
-.care-submit-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.care-submit-btn:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-light)}
+.care-submit-btn:active{transform:scale(.98)}
+.care-submit-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
 
 /* ─── OOP ─── */
 .oop-card{background:var(--surface);border:1.5px solid #dde9e7;border-radius:var(--radius);padding:26px 20px;text-align:center;margin:4px 0 16px;box-shadow:var(--shadow)}
