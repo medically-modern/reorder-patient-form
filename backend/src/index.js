@@ -7,7 +7,7 @@ const cookieParser = require("cookie-parser");
 const multer = require("multer");
 const { verifyReorderToken, generateReorderToken, requireAuth, logout, COOKIE_OPTIONS } = require("./auth");
 const {
-  getPatientData, getPatientOrderDetails, processReorderSubmission, findPatientByPhone,
+  getPatientData, getPatientOrderDetails, processReorderSubmission, findPatientByPhone, writeHelpMessage,
   storeTokenInMonday, getStatusIndexMap, resolveStatusIndex, initWriteQueue,
 } = require("./monday");
 const { sendSMS, buildConfirmationText, smsHealthCheck } = require("./sms");
