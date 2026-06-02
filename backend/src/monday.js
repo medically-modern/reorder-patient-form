@@ -732,10 +732,20 @@ async function writeHelpMessage(uid, helpMessage, helpChip) {
     ? `[${helpChip}]\n${helpMessage}`
     : helpMessage;
 
-  const helpText = `[${timestamp} ET]\n${body}`;
+  const newEntry = `[${timestamp} ET]\n${body}`;
+
+  // Read existing help messages and append
+  const col = (id) => {
+    const c = item.column_values.find((cv) => cv.id === id);
+    return c?.text || "";
+  };
+  const existing = col(COLUMNS.PATIENT_HELP_MSG);
+  const helpText = existing
+    ? `${existing}\n\n${newEntry}`
+    : newEntry;
 
   await writeLongText(itemId, COLUMNS.PATIENT_HELP_MSG, helpText);
-  console.log(`[monday] Help message written for UID ${uid} at ${timestamp}`);
+  console.log(`[monday] Help message appended for UID ${uid} at ${timestamp}`);
 }
 
 async function storeTokenInMonday(uid, token, link) {
