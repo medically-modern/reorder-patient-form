@@ -379,9 +379,7 @@ function getInfusionIndex(setNum) {
 function togglePanel(id, btn) {
   const panel = document.getElementById("panel-" + id);
   const isOpen = panel.classList.toggle("open");
-  btn.innerHTML = isOpen
-    ? '<i class="ti ti-check"></i> Done'
-    : '<i class="ti ti-pencil"></i> Edit';
+  btn.textContent = isOpen ? 'Done' : 'Edit';
 
   // When closing address panel, mark as changed if user entered something
   if (id === "addr" && !isOpen) {

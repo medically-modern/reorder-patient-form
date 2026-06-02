@@ -49,8 +49,8 @@
       <!-- ═══ 1. SHIP DATE ═══ -->
       <section class="card" data-accent="amber">
         <div class="card-head">
-          <span class="card-label"><span class="card-icon"><i class="ti ti-calendar"></i></span> Next ship date</span>
-          <button class="edit-btn" onclick="togglePanel('date', this)"><i class="ti ti-pencil"></i> Edit</button>
+          <span class="card-label">Next ship date</span>
+          <button class="edit-btn" onclick="togglePanel('date', this)">Edit</button>
         </div>
         <div class="card-value" id="order-date-display"></div>
         <div class="card-sub" id="order-date-sub">Ships this date — allow 3–5 business days for delivery.</div>
@@ -73,15 +73,15 @@
       <!-- ═══ 2. SUBSCRIPTION ORDER ═══ -->
       <section class="card" data-accent="green">
         <div class="card-head">
-          <span class="card-label"><span class="card-icon"><i class="ti ti-package"></i></span> Your order</span>
-          <button class="edit-btn" onclick="togglePanel('items', this)"><i class="ti ti-pencil"></i> Edit</button>
+          <span class="card-label">Your order</span>
+          <button class="edit-btn" onclick="togglePanel('items', this)">Edit</button>
         </div>
 
         <!-- Product rows (populated by JS) -->
         <div class="product-list" id="product-list">
           <!-- CGM Sensors row -->
           <div class="product-row" id="prod-sensors" style="display:none">
-            <div class="product-icon product-icon--green"><i class="ti ti-broadcast"></i></div>
+            <!--icon removed-->
             <div class="product-body">
               <div class="product-name" id="prod-sensors-name"></div>
             </div>
@@ -93,7 +93,7 @@
 
           <!-- Infusion Set 1 row -->
           <div class="product-row" id="prod-inf1" style="display:none">
-            <div class="product-icon product-icon--blue"><i class="ti ti-needle"></i></div>
+            <!--icon removed-->
             <div class="product-body">
               <div class="product-name" id="prod-inf1-name"></div>
             </div>
@@ -105,7 +105,7 @@
 
           <!-- Infusion Set 2 row -->
           <div class="product-row" id="prod-inf2" style="display:none">
-            <div class="product-icon product-icon--blue"><i class="ti ti-needle"></i></div>
+            <!--icon removed-->
             <div class="product-body">
               <div class="product-name" id="prod-inf2-name"></div>
             </div>
@@ -117,7 +117,7 @@
 
           <!-- Cartridges row -->
           <div class="product-row" id="prod-cartridges" style="display:none">
-            <div class="product-icon product-icon--violet"><i class="ti ti-flask"></i></div>
+            <!--icon removed-->
             <div class="product-body">
               <div class="product-name" id="prod-cartridges-name"></div>
               <div class="product-meta">Pump cartridge</div>
@@ -227,8 +227,8 @@
       <!-- ═══ 3. SHIPPING ADDRESS ═══ -->
       <section class="card" data-accent="blue">
         <div class="card-head">
-          <span class="card-label"><span class="card-icon"><i class="ti ti-map-pin"></i></span> Shipping address</span>
-          <button class="edit-btn" onclick="togglePanel('addr', this)"><i class="ti ti-pencil"></i> Edit</button>
+          <span class="card-label">Shipping address</span>
+          <button class="edit-btn" onclick="togglePanel('addr', this)">Edit</button>
         </div>
         <div class="card-value" id="address-line1"></div>
         <div class="card-sub" id="address-line2"></div>
@@ -249,8 +249,8 @@
       <!-- ═══ 4. INSURANCE ═══ -->
       <section class="card" data-accent="violet">
         <div class="card-head">
-          <span class="card-label"><span class="card-icon"><i class="ti ti-shield-check"></i></span> Active insurance</span>
-          <button class="edit-btn" onclick="togglePanel('ins', this)"><i class="ti ti-pencil"></i> Edit</button>
+          <span class="card-label">Active insurance</span>
+          <button class="edit-btn" onclick="togglePanel('ins', this)">Edit</button>
         </div>
         <div class="card-value" id="ins-type-display"></div>
         <div class="card-sub mono" id="ins-member-display"></div>
