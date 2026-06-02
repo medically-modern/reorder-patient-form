@@ -912,8 +912,18 @@ function buildSubmission() {
 
   submission.orderChanges = orderChanges;
 
-  // Address
-  if (state.addressChanged && state.newAddress) {
+  // Address — check form fields directly (user may not have closed the panel)
+  const addrInput = document.getElementById("address-input");
+  const addrVal = addrInput?.value?.trim();
+  if (addrVal && state.addressSelectedFromGoogle) {
+    state.addressChanged = true;
+    state.newAddress = addrVal;
+    submission.addressChange = {
+      address: state.newAddress,
+      lat: state.addressCoords.lat,
+      lng: state.addressCoords.lng,
+    };
+  } else if (state.addressChanged && state.newAddress) {
     submission.addressChange = {
       address: state.newAddress,
       lat: state.addressCoords.lat,
