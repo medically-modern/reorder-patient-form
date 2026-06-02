@@ -5,6 +5,7 @@ const {
   storeReorderToken, getReorderToken, deleteReorderToken,
   checkAuthRateLimit, blacklistSession, isSessionBlacklisted,
 } = require("./redis");
+const { lookupTokenInMonday } = require("./monday");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -47,8 +48,20 @@ async function verifyReorderToken(token) {
     return { error: "Too many attempts. Please try again later.", status: 429 };
   }
 
-  // Lookup token in Redis
-  const uid = await getReorderToken(token);
+  // Lookup token in Redis first, fall back to Monday if Redis missed (restart/flush)
+  let uid = await getReorderToken(token);
+  if (!uid) {
+    try {
+      uid = await lookupTokenInMonday(token);
+      if (uid) {
+        // Re-seed Redis so subsequent requests are fast
+        await storeReorderToken(token, uid, AUTH.TOKEN_TTL);
+        console.log(`[auth] Token re-seeded in Redis from Monday fallback for UID ${uid}`);
+      }
+    } catch (err) {
+      console.error(`[auth] Monday fallback lookup failed:`, err.message);
+    }
+  }
   if (!uid) {
     return { error: "This link has expired or already been used. Please contact us for a new one.", status: 401 };
   }

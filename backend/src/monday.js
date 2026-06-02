@@ -693,6 +693,35 @@ async function uploadFileToMonday(itemId, columnId, fileBuffer, fileName) {
   }
 }
 
+// ─── Lookup token in Monday (fallback when Redis misses) ───
+
+async function lookupTokenInMonday(token) {
+  const safeBoard = validateNumericId(SUBSCRIPTION_BOARD_ID, "board ID");
+  const safeCol = validateColumnId(COLUMNS.REORDER_TOKEN);
+
+  const data = await mondayQuery(`{
+    items_page_by_column_values(
+      board_id: ${safeBoard},
+      limit: 1,
+      columns: [{column_id: "${safeCol}", column_values: ["${token.replace(/"/g, "")}"]}]
+    ) {
+      items {
+        id name
+        column_values(ids: ["${validateColumnId(COLUMNS.PATIENT_UID)}"]) { id text }
+      }
+    }
+  }`);
+
+  const item = data.items_page_by_column_values?.items?.[0];
+  if (!item) return null;
+
+  const uid = item.column_values?.find(c => c.id === COLUMNS.PATIENT_UID)?.text;
+  if (!uid) return null;
+
+  console.log(`[monday] Token found in Monday for UID ${uid} (fallback from Redis miss)`);
+  return uid;
+}
+
 // ─── Generate & store reorder token in Monday ───
 
 async function storeTokenInMonday(uid, token, link) {
@@ -859,6 +888,7 @@ module.exports = {
   processReorderSubmission,
   uploadFileToMonday,
   storeTokenInMonday,
+  lookupTokenInMonday,
   getStatusIndexMap,
   resolveStatusIndex,
   getPatientsAt20DaysOut,
