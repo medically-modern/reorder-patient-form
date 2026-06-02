@@ -15,7 +15,7 @@ const { uploadInsuranceCard, getFile } = require("./s3");
 const { queueHealthCheck } = require("./queue");
 const { startCron, checkAndProcessReorders } = require("./cron");
 const { notifySubmissionError, notifySmsError, notifyUnhandled, notifyError } = require("./notify");
-const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, markSubmitted, hasSubmitted, deleteReorderToken } = require("./redis");
+const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, deleteReorderToken } = require("./redis");
 
 const app = express();
 
@@ -418,19 +418,10 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
         message = messages.confirm;
       }
 
-      // Invalidate the reorder token so the link can't be reused after submission
-      // In production mode, delete the token. In test mode, keep it alive for re-testing.
-      if (req.reorderToken && process.env.PRODUCTION_MODE === "true") {
+      // Invalidate the reorder token so the link can't be reused after successful submission
+      if (req.reorderToken) {
         await deleteReorderToken(req.reorderToken);
-        console.log(`[auth] Reorder token invalidated after submission for UID ${req.uid}`);
-      } else {
-        console.log(`[auth] Test mode — token kept alive after submission for UID ${req.uid}`);
-      }
-
-      // Mark as submitted so duplicate requests return cached success
-      // Only for real order responses — help-only messages can be sent multiple times
-      if (submission.response !== "help-only") {
-        await markSubmitted(req.uid);
+        console.log(`[auth] Reorder token invalidated after successful submission for UID ${req.uid}`);
       }
 
       res.json({ success: true, message });
