@@ -26,7 +26,7 @@
   --green: #5d8f8a; --green-bg: #fafdfc; --green-border: rgba(93,143,138,.2);
   --blue: #5d8f8a; --blue-bg: #fafdfc; --blue-border: rgba(93,143,138,.2);
   --violet: #6f6fa6; --violet-bg: #f5f4fa; --violet-border: rgba(111,111,166,.2);
-  --pink: #8a9a98; --pink-bg: #f5f7f6; --pink-border: rgba(138,154,152,.2);
+  --pink: #4f6563; --pink-bg: #f5f7f6; --pink-border: rgba(79,101,99,.2);
   --success: #2D9A6A; --success-bg: #EDFAF3;
   --warn: #C48B1A; --warn-bg: #FEF8EC; --warn-border: rgba(196,139,26,.3);
   --danger: #C44A4A; --danger-bg: #FDF2F2;
@@ -269,9 +269,9 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
 /* ─── Care submit button ─── */
 .care-submit-btn{
   margin-top:11px;width:100%;
-  font-family:'Poppins',sans-serif;font-weight:500;font-size:.88rem;color:var(--text-muted);
-  background:transparent;border:1px solid var(--border);cursor:pointer;
-  border-radius:99px;padding:10px 16px;
+  font-family:'Poppins',sans-serif;font-weight:600;font-size:.9rem;color:var(--text);
+  background:#fff;border:1.5px solid var(--border);cursor:pointer;
+  border-radius:99px;padding:11px 16px;
   transition:all .15s ease;
   -webkit-tap-highlight-color:transparent;
 }

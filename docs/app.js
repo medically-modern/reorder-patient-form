@@ -737,13 +737,9 @@ function updateOop() {
   if (!state.patientData) return;
   const est = getOopEstimate();
   const card = document.getElementById("oop-card");
-  if (!est) { card.style.display = "none"; return; }
+  if (!est || !est.ok || !est.canCalculateCosts) { card.style.display = "none"; return; }
   card.style.display = "";
-  if (!est.ok || !est.canCalculateCosts) {
-    document.getElementById("oop-total").textContent = "—";
-  } else {
-    document.getElementById("oop-total").textContent = fmt(est.patientOwes || 0);
-  }
+  document.getElementById("oop-total").textContent = fmt(est.patientOwes || 0);
 }
 
 function getOopEstimate() {
