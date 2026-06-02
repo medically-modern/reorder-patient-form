@@ -168,10 +168,15 @@ function renderProductRows() {
     document.getElementById("prod-sensors-name").textContent = pd.sensorsType || "CGM Sensor";
     const rawCgm = parseInt(pd.cgmQty, 10);
     const cgmQty = isNaN(rawCgm) ? 3 : rawCgm;
-    const sensorQtyEl = document.getElementById("prod-sensors-qty");
-    const sensorUnitEl = document.getElementById("prod-sensors-unit");
-    if (sensorQtyEl) sensorQtyEl.textContent = String(cgmQty);
-    if (sensorUnitEl) sensorUnitEl.textContent = cgmQty === 0 ? "SKIPPED" : (cgmQty === 1 ? "box" : "boxes");
+    if (cgmQty === 0) {
+      state.sensorsOptOut = true;
+      document.getElementById("prod-sensors-qty").textContent = "0";
+      document.getElementById("prod-sensors-unit").textContent = "SKIPPED";
+      row.classList.add("skipped");
+    } else {
+      document.getElementById("prod-sensors-qty").textContent = String(cgmQty);
+      document.getElementById("prod-sensors-unit").textContent = cgmQty === 1 ? "box" : "boxes";
+    }
   }
 
   // Infusion Set 1
@@ -181,9 +186,17 @@ function renderProductRows() {
     document.getElementById("prod-inf1-name").textContent = pd.infusionSet1 || "Infusion Set";
     const raw1 = parseInt(pd.infQty1, 10);
     const qty1 = isNaN(raw1) ? 3 : raw1;
-    state.infQty1 = qty1;
-    document.getElementById("prod-inf1-qty").textContent = String(qty1);
-    document.getElementById("prod-inf1-unit").textContent = qty1 === 0 ? "SKIPPED" : (qty1 === 1 ? "box" : "boxes");
+    if (qty1 === 0) {
+      state.infusionOptOut = true;
+      state.infQty1 = 0;
+      document.getElementById("prod-inf1-qty").textContent = "0";
+      document.getElementById("prod-inf1-unit").textContent = "SKIPPED";
+      row.classList.add("skipped");
+    } else {
+      state.infQty1 = qty1;
+      document.getElementById("prod-inf1-qty").textContent = String(qty1);
+      document.getElementById("prod-inf1-unit").textContent = qty1 === 1 ? "box" : "boxes";
+    }
   }
 
   // Infusion Set 2
@@ -195,8 +208,14 @@ function renderProductRows() {
     const raw2 = parseInt(pd.infQty2, 10);
     const qty2 = isNaN(raw2) ? 0 : raw2;
     state.infQty2 = qty2;
-    document.getElementById("prod-inf2-qty").textContent = String(qty2);
-    document.getElementById("prod-inf2-unit").textContent = qty2 === 1 ? "box" : "boxes";
+    if (qty2 === 0) {
+      document.getElementById("prod-inf2-qty").textContent = "0";
+      document.getElementById("prod-inf2-unit").textContent = "SKIPPED";
+      row.classList.add("skipped");
+    } else {
+      document.getElementById("prod-inf2-qty").textContent = String(qty2);
+      document.getElementById("prod-inf2-unit").textContent = qty2 === 1 ? "box" : "boxes";
+    }
   }
 
   // Cartridges
@@ -206,10 +225,15 @@ function renderProductRows() {
     document.getElementById("prod-cartridges-name").textContent = (pd.suppliesType || "Pump") + " cartridge";
     const rawCart = parseInt(pd.cartridgeQty, 10);
     const cartQty = isNaN(rawCart) ? 3 : rawCart;
-    const cartQtyEl = document.getElementById("prod-cartridges-qty");
-    const cartUnitEl = document.getElementById("prod-cartridges-unit");
-    if (cartQtyEl) cartQtyEl.textContent = String(cartQty);
-    if (cartUnitEl) cartUnitEl.textContent = cartQty === 0 ? "SKIPPED" : (cartQty === 1 ? "box" : "boxes");
+    if (cartQty === 0) {
+      state.cartridgesOptOut = true;
+      document.getElementById("prod-cartridges-qty").textContent = "0";
+      document.getElementById("prod-cartridges-unit").textContent = "SKIPPED";
+      row.classList.add("skipped");
+    } else {
+      document.getElementById("prod-cartridges-qty").textContent = String(cartQty);
+      document.getElementById("prod-cartridges-unit").textContent = cartQty === 1 ? "box" : "boxes";
+    }
   }
 }
 
@@ -249,6 +273,28 @@ function renderOrderEditPanel() {
   if (pd.servingSupplies) {
     document.getElementById("edit-cartridges").style.display = "";
     document.getElementById("cartridge-display").textContent = pd.suppliesType || "Cartridges";
+    if (state.cartridgesOptOut) {
+      const btn = document.getElementById("cartridges-skip-btn");
+      const editSection = document.getElementById("edit-cartridges");
+      if (btn) { btn.classList.add("active"); btn.textContent = "Skipping \u2713"; }
+      if (editSection) editSection.classList.add("skipped");
+    }
+  }
+
+  // Sensors edit — pre-skip if qty was 0
+  if (pd.servingSensors && state.sensorsOptOut) {
+    const btn = document.getElementById("sensors-skip-btn");
+    const editSection = document.getElementById("edit-sensors");
+    if (btn) { btn.classList.add("active"); btn.textContent = "Skipping \u2713"; }
+    if (editSection) editSection.classList.add("skipped");
+  }
+
+  // Infusion edit — pre-skip if qty was 0
+  if (pd.servingInfusionSet1 && state.infusionOptOut) {
+    const btn = document.getElementById("infusion-skip-btn");
+    const editSection = document.getElementById("edit-infusion");
+    if (btn) { btn.classList.add("active"); btn.textContent = "Skipping \u2713"; }
+    if (editSection) editSection.classList.add("skipped");
   }
 
   // Snapshot initial state
@@ -496,20 +542,34 @@ function toggleSkip(section) {
   if (section === "sensors") {
     state.sensorsOptOut = !state.sensorsOptOut;
     btn.classList.toggle("active", state.sensorsOptOut);
-    btn.textContent = state.sensorsOptOut ? "Skipping ✓" : "Skip this cycle";
+    btn.textContent = state.sensorsOptOut ? "Skipping \u2713" : "Skip this cycle";
     editSection.classList.toggle("skipped", state.sensorsOptOut);
   }
   if (section === "cartridges") {
     state.cartridgesOptOut = !state.cartridgesOptOut;
     btn.classList.toggle("active", state.cartridgesOptOut);
-    btn.textContent = state.cartridgesOptOut ? "Skipping ✓" : "Skip this cycle";
+    btn.textContent = state.cartridgesOptOut ? "Skipping \u2713" : "Skip this cycle";
     editSection.classList.toggle("skipped", state.cartridgesOptOut);
   }
   if (section === "infusion") {
     state.infusionOptOut = !state.infusionOptOut;
     btn.classList.toggle("active", state.infusionOptOut);
-    btn.textContent = state.infusionOptOut ? "Skipping ✓" : "Skip this cycle";
+    btn.textContent = state.infusionOptOut ? "Skipping \u2713" : "Skip this cycle";
     editSection.classList.toggle("skipped", state.infusionOptOut);
+    // Unskipping: restore qty to 3 if it was 0
+    if (!state.infusionOptOut && state.infQty1 === 0) {
+      state.infQty1 = 3;
+      document.getElementById("inf-qty-1").textContent = "3";
+      document.getElementById("prod-inf1-qty").textContent = "3";
+      document.getElementById("prod-inf1-unit").textContent = "boxes";
+      document.getElementById("prod-inf1").classList.remove("skipped");
+    }
+    if (!state.infusionOptOut && state.infQty2 === 0 && state.hasSecondSet) {
+      state.infQty2 = 3;
+      document.getElementById("inf-qty-2").textContent = "3";
+      document.getElementById("prod-inf2-qty").textContent = "3";
+      document.getElementById("prod-inf2-unit").textContent = "boxes";
+    }
   }
 
   updateOop();
