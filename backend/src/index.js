@@ -340,7 +340,7 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
       }
 
       // Validate required fields
-      if (!submission.response || !["confirm", "delay", "cancel", "help-only"].includes(submission.response)) {
+      if (!submission.response || !["confirm", "delay", "cancel"].includes(submission.response)) {
         return res.status(400).json({ error: "Invalid response. Must be confirm, delay, or cancel." });
       }
 
@@ -457,6 +457,22 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
     await notifySubmissionError(`Submit failed: ${err.message}`, req.uid);
     await releaseSubmissionLock(req.uid).catch(() => {});
     res.status(500).json({ error: "Failed to submit your form. Please try again." });
+  }
+});
+
+// POST /api/help-message — Standalone care team message (completely separate from order submission)
+app.post("/api/help-message", apiLimiter, requireAuth, async (req, res) => {
+  try {
+    const { helpMessage, helpChip } = req.body;
+    if (!helpMessage || !helpMessage.trim()) {
+      return res.status(400).json({ error: "Please type a message first." });
+    }
+
+    await writeHelpMessage(req.uid, helpMessage.trim(), helpChip);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[api] Help message error:", err.message);
+    res.status(500).json({ error: "Couldn't send your message. Please try again." });
   }
 });
 

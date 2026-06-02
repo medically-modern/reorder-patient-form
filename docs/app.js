@@ -709,13 +709,11 @@ async function submitCareMessage() {
   btn.disabled = true;
   btn.textContent = "Sending...";
   try {
-    await apiFetch("/api/submit", {
+    await apiFetch("/api/help-message", {
       method: "POST",
       body: JSON.stringify({
-        response: "help-only",
         helpMessage: msg,
         helpChip: state.helpChip,
-        currentOrderDate: state.patientData?.nextOrder || null,
       }),
     });
     btn.textContent = "Sent!";
@@ -819,13 +817,6 @@ async function handleSubmit() {
       });
       const uploadData = await uploadRes.json();
       if (uploadData.urls) submission.insuranceCardUrls = uploadData.urls;
-    }
-
-    // Capture help message from textarea at submit time
-    const helpMsg = document.getElementById("help-msg")?.value?.trim();
-    if (helpMsg) {
-      submission.helpMessage = helpMsg;
-      submission.helpChip = state.helpChip;
     }
 
     btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Saving...';

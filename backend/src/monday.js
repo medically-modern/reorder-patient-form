@@ -593,18 +593,7 @@ async function processReorderSubmission(uid, submission) {
     });
   }
 
-  // ─── Help message (from "Need a hand?" section) ───
-
-  if (submission.helpMessage) {
-    const helpText = submission.helpChip
-      ? `[${submission.helpChip}]\n${submission.helpMessage}`
-      : submission.helpMessage;
-    tasks.push({
-      label: "Patient Help Message",
-      fn: () => writeLongText(itemId, COLUMNS.PATIENT_HELP_MSG, helpText),
-    });
-    changeSummaryParts.push(`Patient sent a help message: "${submission.helpMessage.slice(0, 80)}${submission.helpMessage.length > 80 ? '...' : ''}"`);
-  }
+  // Help messages are handled by the dedicated /api/help-message endpoint
 
   // ─── Execute all writes in parallel ───
 
@@ -727,6 +716,19 @@ async function lookupTokenInMonday(token) {
 }
 
 // ─── Generate & store reorder token in Monday ───
+
+async function writeHelpMessage(uid, helpMessage, helpChip) {
+  const item = await findPatientByUid(uid);
+  if (!item) throw new Error("Patient not found");
+  const itemId = validateNumericId(item.id, "item ID");
+
+  const helpText = helpChip
+    ? `[${helpChip}]\n${helpMessage}`
+    : helpMessage;
+
+  await writeLongText(itemId, COLUMNS.PATIENT_HELP_MSG, helpText);
+  console.log(`[monday] Help message written for UID ${uid}`);
+}
 
 async function storeTokenInMonday(uid, token, link) {
   const item = await findPatientByUid(uid);
@@ -886,6 +888,7 @@ module.exports = {
   getPatientOrderDetails,
   processReorderSubmission,
   uploadFileToMonday,
+  writeHelpMessage,
   storeTokenInMonday,
   lookupTokenInMonday,
   getStatusIndexMap,
