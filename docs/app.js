@@ -921,13 +921,15 @@ function buildSubmission() {
     };
   }
 
-  // Insurance
-  if (state.insuranceChanged) {
+  // Insurance — check form fields directly (user may not have closed the panel)
+  const insType = document.getElementById("new-insurance-type").value;
+  const insMemberId = document.getElementById("new-member-id").value.trim();
+  if (insType && insMemberId) {
     submission.insuranceResponse = "changed";
-    let insType = document.getElementById("new-insurance-type").value;
-    if (insType === "Other") insType = document.getElementById("other-insurance-name").value.trim() || "Other";
-    submission.newInsuranceType = insType;
-    submission.newMemberId = document.getElementById("new-member-id").value.trim();
+    submission.newInsuranceType = insType === "Other"
+      ? (document.getElementById("other-insurance-name").value.trim() || "Other")
+      : insType;
+    submission.newMemberId = insMemberId;
   } else {
     submission.insuranceResponse = "confirmed";
   }
