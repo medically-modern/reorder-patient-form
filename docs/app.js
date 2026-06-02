@@ -830,15 +830,23 @@ async function handleSubmit() {
 
     btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Saving...';
 
-    const res = await fetch(`${API_BASE}/api/submit`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(state.sessionToken ? { Authorization: `Bearer ${state.sessionToken}` } : {}),
-      },
-      body: JSON.stringify(submission),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let res;
+    try {
+      res = await fetch(`${API_BASE}/api/submit`, {
+        method: "POST",
+        credentials: "include",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(state.sessionToken ? { Authorization: `Bearer ${state.sessionToken}` } : {}),
+        },
+        body: JSON.stringify(submission),
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const result = await res.json();
 
@@ -865,7 +873,10 @@ async function handleSubmit() {
     }
   } catch (err) {
     console.error("Submit error:", err);
-    alert("We couldn't reach our server. Please check your connection, reload the page, and try again.");
+    const msg = err.name === "AbortError"
+      ? "The request is taking too long. Your internet may be slow. Please reload the page and try again."
+      : "We couldn't reach our server. Please check your connection, reload the page, and try again.";
+    alert(msg);
     btn.disabled = false;
     btn.textContent = 'Confirm';
   }

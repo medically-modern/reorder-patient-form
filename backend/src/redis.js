@@ -74,6 +74,15 @@ async function releaseSubmissionLock(uid) {
   await redis.del(`submit_lock:${uid}`);
 }
 
+async function markSubmitted(uid, ttlSeconds = 86400) {
+  await redis.set(`submitted:${uid}`, Date.now().toString(), "EX", ttlSeconds);
+}
+
+async function hasSubmitted(uid) {
+  const val = await redis.get(`submitted:${uid}`);
+  return !!val;
+}
+
 // ─── Health check ───
 
 async function healthCheck() {
@@ -91,6 +100,6 @@ module.exports = {
   checkAuthRateLimit,
   blacklistSession, isSessionBlacklisted,
   cachePatientData, getCachedPatientData, invalidatePatientCache,
-  acquireSubmissionLock, releaseSubmissionLock,
+  acquireSubmissionLock, releaseSubmissionLock, markSubmitted, hasSubmitted,
   healthCheck,
 };

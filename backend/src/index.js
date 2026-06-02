@@ -15,7 +15,7 @@ const { uploadInsuranceCard, getFile } = require("./s3");
 const { queueHealthCheck } = require("./queue");
 const { startCron, checkAndProcessReorders } = require("./cron");
 const { notifySubmissionError, notifySmsError, notifyUnhandled, notifyError } = require("./notify");
-const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, deleteReorderToken } = require("./redis");
+const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, markSubmitted, hasSubmitted, deleteReorderToken } = require("./redis");
 
 const app = express();
 
@@ -324,6 +324,17 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
     }
 
     try {
+      // Check if this patient already submitted successfully (prevents double-writes on lost responses)
+      if (await hasSubmitted(req.uid)) {
+        const messages = {
+          confirm: "Thank you! Your order has been confirmed. We'll begin processing it shortly. Please reach out if anything changes.",
+          delay: "Thank you! Your order has been successfully delayed. We'll reach out again before your new order date.",
+          cancel: "We're sad to see you go! We'll cancel all ongoing reorders. Please text/call us if this was a mistake.",
+        };
+        console.log(`[api] Duplicate submit detected for UID ${req.uid} — returning cached success`);
+        return res.json({ success: true, message: messages[req.body.response] || messages.confirm });
+      }
+
       const submission = req.body;
 
       // Validate required fields
@@ -413,6 +424,9 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
       } else {
         console.log(`[auth] Test mode — token kept alive after submission for UID ${req.uid}`);
       }
+
+      // Mark as submitted so duplicate requests return cached success
+      await markSubmitted(req.uid);
 
       res.json({ success: true, message });
 
