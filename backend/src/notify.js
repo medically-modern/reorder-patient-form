@@ -82,8 +82,12 @@ function notifyCronSummary(processed, errors, skipped) {
       { priority: "high", tags: ["warning", "clock"] }
     );
   }
-  // Don't notify on clean runs — only errors
-  return Promise.resolve();
+  // Always notify — confirms the cron ran successfully
+  return notifyError(
+    `Reorder Cron: ${processed} sent`,
+    `Processed: ${processed}, Skipped: ${skipped}, Errors: 0`,
+    { priority: processed > 0 ? "default" : "low", tags: ["white_check_mark", "clock"] }
+  );
 }
 
 function notifyUnhandled(type, error) {

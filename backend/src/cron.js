@@ -136,9 +136,8 @@ async function checkAndProcessReorders() {
 // ─── Schedule: runs at 6 AM, 12 PM, 6 PM, 12 AM ET ───
 
 function startCron() {
-  // Runs at 6 AM, 12 PM, 6 PM, 12 AM Eastern Time
-  // node-cron handles DST automatically via the timezone option
-  const schedule = "0 0,6,12,18 * * *";
+  // Runs once daily at 9 AM Eastern Time
+  const schedule = "0 9 * * *";
 
   const task = cron.schedule(schedule, () => {
     checkAndProcessReorders().catch((err) => {
@@ -149,7 +148,7 @@ function startCron() {
     timezone: "America/New_York",
   });
 
-  console.log(`[cron] Reorder scheduler started — runs 4x/day at 6 AM, 12 PM, 6 PM, 12 AM ET`);
+  console.log(`[cron] Reorder scheduler started — runs daily at 9 AM ET`);
 
   return task;
 }
