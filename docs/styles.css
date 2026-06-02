@@ -139,11 +139,9 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
   font-family:'IBM Plex Mono',monospace; font-size:1.12rem;
   letter-spacing:.02em; text-transform:uppercase; font-weight:700;
 }
-/* Force-hide icon badges — Tabler icon CSS fights specificity */
-.card-icon,
-.card-icon *,
-.card-head .card-icon,
-span.card-icon { display:none !important; width:0 !important; height:0 !important; overflow:hidden !important; margin:0 !important; padding:0 !important; }
+/* Force-hide icon badges — nuke with zero dimensions so Tabler CSS can't override */
+[class*="card-icon"] { display:none !important; width:0 !important; height:0 !important; overflow:hidden !important; margin:0 !important; padding:0 !important; border:0 !important; font-size:0 !important; line-height:0 !important; }
+[class*="card-icon"] * { display:none !important; }
 
 /* Edit button */
 .edit-btn {
@@ -155,7 +153,7 @@ span.card-icon { display:none !important; width:0 !important; height:0 !importan
 }
 .edit-btn:hover{border-color:var(--brand);color:var(--brand)}
 .edit-btn:active{transform:scale(.97)}
-.edit-btn i{display:none}
+.edit-btn i,.edit-btn .ti{display:none !important}
 
 .card-value { font-family:'Poppins',sans-serif; font-size:1.04rem; font-weight:600; color:var(--text); margin-top:0; letter-spacing:-.01em; }
 .card-sub { font-size:.86rem; color:var(--text-muted); margin-top:3px; line-height:1.45; }
@@ -170,9 +168,8 @@ span.card-icon { display:none !important; width:0 !important; height:0 !importan
 .product-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 0}
 .product-row+.product-row{border-top:1px solid var(--border-light)}
 .product-row:first-child{border-top:0;padding-top:0}
-.product-icon,
-.product-icon *,
-div.product-icon { display:none !important; width:0 !important; height:0 !important; overflow:hidden !important; margin:0 !important; padding:0 !important; }
+[class*="product-icon"] { display:none !important; width:0 !important; height:0 !important; overflow:hidden !important; margin:0 !important; padding:0 !important; border:0 !important; font-size:0 !important; line-height:0 !important; }
+[class*="product-icon"] * { display:none !important; }
 .product-body{flex:1;min-width:0}
 .product-name{font-family:'Poppins',sans-serif;font-size:.92rem;font-weight:600;color:var(--text);letter-spacing:0}
 .product-meta{font-family:'IBM Plex Mono',monospace;font-size:.74rem;color:var(--text-muted);margin-top:2px;letter-spacing:.02em}
