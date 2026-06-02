@@ -829,21 +829,43 @@ async function handleSubmit() {
     }
 
     btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Saving...';
-    const result = await apiFetch("/api/submit", {
+
+    const res = await fetch(`${API_BASE}/api/submit`, {
       method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(state.sessionToken ? { Authorization: `Bearer ${state.sessionToken}` } : {}),
+      },
       body: JSON.stringify(submission),
     });
 
-    if (result.success) {
+    const result = await res.json();
+
+    if (res.ok && result.success) {
       showSuccess(result.message);
+    } else if (res.status === 207 || result.partial) {
+      // Partial Monday write failure — some fields saved, some didn't
+      alert("Some of your information couldn't be saved. Please reload the page and try again. If the problem continues, text or call us.");
+      btn.disabled = false;
+      btn.textContent = 'Confirm';
+    } else if (res.status === 409) {
+      // Double-submit lock
+      alert(result.error || "Your form is already being submitted. Please wait a moment.");
+      btn.disabled = false;
+      btn.textContent = 'Confirm';
+    } else if (result.error) {
+      alert(result.error);
+      btn.disabled = false;
+      btn.textContent = 'Confirm';
     } else {
-      alert(result.message || "There was an issue saving your form. Please try again.");
+      alert("Something went wrong saving your form. Please reload the page and try again.");
       btn.disabled = false;
       btn.textContent = 'Confirm';
     }
   } catch (err) {
     console.error("Submit error:", err);
-    document.getElementById("network-error").classList.remove("hidden");
+    alert("We couldn't reach our server. Please check your connection, reload the page, and try again.");
     btn.disabled = false;
     btn.textContent = 'Confirm';
   }
