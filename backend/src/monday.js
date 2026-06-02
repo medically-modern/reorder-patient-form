@@ -722,12 +722,20 @@ async function writeHelpMessage(uid, helpMessage, helpChip) {
   if (!item) throw new Error("Patient not found");
   const itemId = validateNumericId(item.id, "item ID");
 
-  const helpText = helpChip
+  const timestamp = new Date().toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+
+  const body = helpChip
     ? `[${helpChip}]\n${helpMessage}`
     : helpMessage;
 
+  const helpText = `[${timestamp} ET]\n${body}`;
+
   await writeLongText(itemId, COLUMNS.PATIENT_HELP_MSG, helpText);
-  console.log(`[monday] Help message written for UID ${uid}`);
+  console.log(`[monday] Help message written for UID ${uid} at ${timestamp}`);
 }
 
 async function storeTokenInMonday(uid, token, link) {
