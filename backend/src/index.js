@@ -11,7 +11,7 @@ const {
   writeHelpMessage, storeTokenInMonday, getStatusIndexMap, resolveStatusIndex, initWriteQueue, uploadFileToMonday,
 } = require("./monday");
 const { sendSMS, buildConfirmationText, smsHealthCheck } = require("./sms");
-const { uploadInsuranceCard, getFile } = require("./s3");
+const { uploadInsuranceCard } = require("./s3");
 const { queueHealthCheck } = require("./queue");
 const { startCron, checkAndProcessReorders } = require("./cron");
 const { notifySubmissionError, notifySmsError, notifyUnhandled, notifyError } = require("./notify");
@@ -491,24 +491,8 @@ app.post("/api/help-message", apiLimiter, requireAuth, async (req, res) => {
   }
 });
 
-// NOTE: /api/upload-insurance-card has been merged into /api/submit
-// Insurance card files are now sent as part of the same multipart request
-
-// ─── Serve uploaded files (insurance cards from Railway volume) ───
-app.get("/files/:uid/:filename", requireAuth, (req, res) => {
-  const key = `${req.params.uid}/${req.params.filename}`;
-  // Only allow patients to access their own files
-  if (req.params.uid !== req.uid) {
-    return res.status(403).json({ error: "Access denied" });
-  }
-  const file = getFile(key);
-  if (!file) {
-    return res.status(404).json({ error: "File not found" });
-  }
-  res.set("Content-Type", file.mimeType);
-  res.set("Content-Disposition", `inline; filename="${file.originalName}"`);
-  res.send(file.buffer);
-});
+// NOTE: /api/upload-insurance-card merged into /api/submit
+// NOTE: /files/ route removed — volume detached, files live in Monday only
 
 // ─── Error handler for multer ───
 app.use((err, req, res, next) => {
