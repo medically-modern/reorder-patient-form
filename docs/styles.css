@@ -454,6 +454,10 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
   color: white;
 }
 
+/* ─── Insurance warning card ─── */
+.insurance-warning-card{text-align:center;padding:24px 20px}
+.insurance-warning-text{font-size:.9rem;color:var(--text-secondary);line-height:1.55}
+
 /* ─── Apartment add-on ─── */
 .apt-addon{margin-top:12px;animation:panelIn .2s ease-out}
 .apt-addon-row{display:flex;align-items:center;gap:8px}

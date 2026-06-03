@@ -14,6 +14,9 @@ const COLUMNS = {
   ORDER_TYPE:       "color_mm2w6kd",      // First Order / Reorder
   PATIENT_UID:      "text_mm3af3zt",      // Patient UID
 
+  // Insurance activity
+  ACTIVE_STATUS:    "color_mm2nzm33",     // Active / Inactive / Medicare Advantage
+
   // Demographics
   DOB:              "text_mkvdefh1",
   GENDER:           "color_mm1zgyy2",

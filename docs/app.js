@@ -757,8 +757,22 @@ async function submitCareMessage() {
 
 function updateOop() {
   if (!state.patientData) return;
-  const est = getOopEstimate();
+
+  const warningCard = document.getElementById("insurance-warning-card");
   const card = document.getElementById("oop-card");
+  const activeStatus = (state.patientData.activeStatus || "").toLowerCase().trim();
+
+  // If Inactive or Medicare Advantage — show warning, hide OOP
+  if (activeStatus === "inactive" || activeStatus === "medicare advantage") {
+    if (warningCard) warningCard.style.display = "";
+    card.style.display = "none";
+    return;
+  }
+
+  // Otherwise hide warning, show OOP as normal
+  if (warningCard) warningCard.style.display = "none";
+
+  const est = getOopEstimate();
   if (!est || !est.ok || !est.canCalculateCosts) { card.style.display = "none"; return; }
   card.style.display = "";
   document.getElementById("oop-total").textContent = fmt(est.patientOwes || 0);

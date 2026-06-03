@@ -266,6 +266,7 @@ async function getPatientData(uid) {
 
     // Subscription core
     status: col(COLUMNS.STATUS),
+    activeStatus: col(COLUMNS.ACTIVE_STATUS),
     subscription,
     orderType: col(COLUMNS.ORDER_TYPE),
     nextOrder: col(COLUMNS.NEXT_ORDER),
