@@ -7,15 +7,17 @@ const cookieParser = require("cookie-parser");
 const multer = require("multer");
 const { verifyReorderToken, generateReorderToken, requireAuth, logout, COOKIE_OPTIONS } = require("./auth");
 const {
-  getPatientData, getPatientOrderDetails, processReorderSubmission, findPatientByPhone, writeHelpMessage,
-  storeTokenInMonday, getStatusIndexMap, resolveStatusIndex, initWriteQueue,
+  getPatientData, getPatientOrderDetails, processReorderSubmission, findPatientByPhone, findPatientByUid,
+  writeHelpMessage, storeTokenInMonday, getStatusIndexMap, resolveStatusIndex, initWriteQueue, uploadFileToMonday,
 } = require("./monday");
 const { sendSMS, buildConfirmationText, smsHealthCheck } = require("./sms");
 const { uploadInsuranceCard, getFile } = require("./s3");
 const { queueHealthCheck } = require("./queue");
 const { startCron, checkAndProcessReorders } = require("./cron");
 const { notifySubmissionError, notifySmsError, notifyUnhandled, notifyError } = require("./notify");
-const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, deleteReorderToken } = require("./redis");
+const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, deleteReorderToken, getIdempotencyResult, setIdempotencyResult } = require("./redis");
+const { enqueueConfirmationSms } = require("./queue");
+const { COLUMNS } = require("./config");
 
 const app = express();
 
@@ -111,6 +113,30 @@ app.get("/auth/verify/:token", authLimiter, async (req, res) => {
     const result = await verifyReorderToken(token);
 
     if (result.error) {
+      // Token expired/invalid — check if the patient already submitted successfully
+      // This handles the case where response was lost to client on a spotty connection
+      if (result.status === 401) {
+        try {
+          const { lookupTokenInMonday } = require("./monday");
+          // Try to find the UID via Monday (token may still be in the Monday column even after Redis expiry)
+          const uid = await lookupTokenInMonday(token);
+          if (uid) {
+            const patient = await findPatientByUid(uid);
+            if (patient) {
+              const responseCol = patient.column_values?.find(c => c.id === COLUMNS.PATIENT_ORDER_RESPONSE);
+              if (responseCol?.text) {
+                return res.status(200).json({
+                  success: false,
+                  alreadySubmitted: true,
+                  message: "Your order has already been submitted. If you need to make changes, please text or call us.",
+                });
+              }
+            }
+          }
+        } catch (lookupErr) {
+          console.warn("[auth] Already-submitted lookup failed:", lookupErr.message);
+        }
+      }
       return res.status(result.status).json({ error: result.error });
     }
 
@@ -222,42 +248,9 @@ app.post("/admin/trigger-reorder-check", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// CONFIRMATION TEXT — sent after patient submits the form
+// CONFIRMATION TEXT — now handled via BullMQ delayed job
+// See queue.js: enqueueConfirmationSms()
 // ═══════════════════════════════════════════════════════
-
-async function sendConfirmationTextAfterDelay(uid, optOuts = {}) {
-  // Wait for Monday writes to settle
-  const DELAY_MS = 20_000; // 20 seconds
-  console.log(`[sms] Waiting ${DELAY_MS / 1000}s before sending confirmation text for UID ${uid}...`);
-  await new Promise((r) => setTimeout(r, DELAY_MS));
-
-  // Re-read from Monday to get the actual written values
-  const details = await getPatientOrderDetails(uid);
-  if (!details) {
-    console.error(`[sms] Cannot send confirmation — patient ${uid} not found in Monday`);
-    return;
-  }
-
-  if (!details.phone) {
-    console.error(`[sms] Cannot send confirmation — no phone for UID ${uid}`);
-    return;
-  }
-
-  const messageText = buildConfirmationText({
-    name: details.name,
-    address: details.address,
-    nextOrder: details.nextOrder,
-    sensorsType: optOuts.sensorsOptOut ? null : details.sensorsType,
-    suppliesType: optOuts.cartridgesOptOut ? null : details.suppliesType,
-    infusionSet1: optOuts.infusionOptOut ? null : details.infusionSet1,
-    infQty1: optOuts.infusionOptOut ? null : details.infQty1,
-    infusionSet2: optOuts.infusionOptOut ? null : details.infusionSet2,
-    infQty2: optOuts.infusionOptOut ? null : details.infQty2,
-  });
-
-  await sendSMS(details.phone, messageText, { patientName: details.name });
-  console.log(`[sms] Confirmation text sent to UID ${uid}`);
-}
 
 // ═══════════════════════════════════════════════════════
 // PATIENT API ROUTES (all require auth)
@@ -315,8 +308,20 @@ app.get("/api/order-options", apiLimiter, requireAuth, async (req, res) => {
 });
 
 // POST /api/submit — Submit the reorder form
-app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
+// Accepts multipart/form-data (with optional insurance card files) or JSON
+// Supports idempotency key via X-Idempotency-Key header for safe retries
+app.post("/api/submit", apiLimiter, requireAuth, upload.array("cards", 2), async (req, res) => {
   try {
+    // ─── Idempotency check ───
+    const idempotencyKey = req.headers["x-idempotency-key"];
+    if (idempotencyKey) {
+      const cached = await getIdempotencyResult(idempotencyKey);
+      if (cached) {
+        console.log(`[api] Idempotency hit for key ${idempotencyKey.slice(0, 8)}… — returning cached response`);
+        return res.status(cached.status).json(cached.body);
+      }
+    }
+
     // Prevent double submission
     const lockAcquired = await acquireSubmissionLock(req.uid);
     if (!lockAcquired) {
@@ -324,8 +329,8 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
     }
 
     try {
-      const submission = req.body;
-
+      // Parse submission — multipart sends JSON in a "submission" field, plain JSON sends it in the body
+      const submission = req.body.submission ? JSON.parse(req.body.submission) : req.body;
 
       // Validate required fields
       if (!submission.response || !["confirm", "delay", "cancel"].includes(submission.response)) {
@@ -372,7 +377,6 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
         const qty2 = parseFloat(submission.orderChanges.infQty2) || 0;
         const totalQty = qty1 + qty2;
 
-        // Check insurance-specific limits
         const maxQty = submission.isAnthemOrCigna ? 9 : 3;
         if (totalQty > maxQty) {
           return res.status(400).json({
@@ -381,6 +385,34 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
         }
       }
 
+      // ─── Insurance card upload (merged into submit) ───
+      const uploadedCardUrls = [];
+      if (req.files && req.files.length > 0) {
+        const patient = await findPatientByUid(req.uid);
+        const itemId = patient ? patient.id : null;
+
+        for (const file of req.files) {
+          // Save to Railway volume (local backup)
+          const s3Result = await uploadInsuranceCard(
+            file.buffer, file.originalname, file.mimetype, req.uid
+          );
+          uploadedCardUrls.push(s3Result.url);
+
+          // Upload to Monday Insurance Card file column
+          if (itemId) {
+            const mondayResult = await uploadFileToMonday(
+              itemId, COLUMNS.INSURANCE_CARD, file.buffer, file.originalname
+            );
+            if (!mondayResult.success) {
+              console.warn(`[api] Monday file upload failed for UID ${req.uid}:`, mondayResult);
+            }
+          }
+        }
+        submission.insuranceCardUrls = uploadedCardUrls;
+        console.log(`[api] Insurance cards uploaded for UID ${req.uid}: ${uploadedCardUrls.length} file(s)`);
+      }
+
+      // ─── Process Monday writes ───
       const result = await processReorderSubmission(req.uid, submission);
 
       if (result.partial) {
@@ -412,21 +444,25 @@ app.post("/api/submit", apiLimiter, requireAuth, async (req, res) => {
         console.log(`[auth] Reorder token invalidated after successful submission for UID ${req.uid}`);
       }
 
-      res.json({ success: true, message });
+      const responseBody = { success: true, message };
+      const responseStatus = 200;
 
-      // ─── Fire-and-forget: send confirmation text after Monday writes settle ───
+      // Cache successful response for idempotency
+      if (idempotencyKey) {
+        await setIdempotencyResult(idempotencyKey, { status: responseStatus, body: responseBody });
+      }
+
+      res.status(responseStatus).json(responseBody);
+
+      // ─── Enqueue confirmation SMS via BullMQ (persisted, auto-retries) ───
       // Send for confirm and delay responses (not cancel — patient is leaving)
       if (submission.response === "confirm" || submission.response === "delay") {
-        // Pass opt-out flags so confirmation text excludes skipped items
         const optOuts = {
           sensorsOptOut: submission.orderChanges?.sensorsOptOut || false,
           cartridgesOptOut: submission.orderChanges?.cartridgesOptOut || false,
           infusionOptOut: submission.orderChanges?.infusionOptOut || false,
         };
-        sendConfirmationTextAfterDelay(req.uid, optOuts).catch((err) => {
-          console.error(`[sms] Confirmation text failed for UID ${req.uid}:`, err.message);
-          notifySmsError(`Confirmation text failed: ${err.message}`, req.uid);
-        });
+        await enqueueConfirmationSms(req.uid, optOuts);
       }
     } finally {
       await releaseSubmissionLock(req.uid);
@@ -455,59 +491,8 @@ app.post("/api/help-message", apiLimiter, requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/upload-insurance-card — Upload insurance card images
-app.post("/api/upload-insurance-card", apiLimiter, requireAuth, upload.array("cards", 2), async (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: "No files uploaded" });
-    }
-
-    // Look up patient's Monday item ID for file column upload
-    const { findPatientByUid, uploadFileToMonday } = require("./monday");
-    const { COLUMNS } = require("./config");
-    const patient = await findPatientByUid(req.uid);
-    const itemId = patient ? patient.id : null;
-
-    const urls = [];
-    const mondayResults = [];
-
-    for (const file of req.files) {
-      // Save to Railway volume (local backup)
-      const result = await uploadInsuranceCard(
-        file.buffer,
-        file.originalname,
-        file.mimetype,
-        req.uid
-      );
-      urls.push(result.url);
-
-      // Upload to Monday Insurance Card file column
-      if (itemId) {
-        const mondayResult = await uploadFileToMonday(
-          itemId,
-          COLUMNS.INSURANCE_CARD,
-          file.buffer,
-          file.originalname
-        );
-        mondayResults.push(mondayResult);
-      }
-    }
-
-    const mondayFails = mondayResults.filter(r => !r.success);
-    if (mondayFails.length > 0) {
-      console.warn(`[api] ${mondayFails.length} Monday file upload(s) failed for UID ${req.uid}:`, mondayFails);
-    }
-
-    console.log(`[api] Insurance cards uploaded for UID ${req.uid}: ${urls.length} file(s), Monday: ${mondayResults.length - mondayFails.length}/${mondayResults.length} succeeded`);
-    res.json({ success: true, urls, mondayUploaded: mondayFails.length === 0 });
-  } catch (err) {
-    console.error("[api] Upload error:", err.message);
-    if (err.message.includes("File type")) {
-      return res.status(400).json({ error: err.message });
-    }
-    res.status(500).json({ error: "Failed to upload files. Please try again." });
-  }
-});
+// NOTE: /api/upload-insurance-card has been merged into /api/submit
+// Insurance card files are now sent as part of the same multipart request
 
 // ─── Serve uploaded files (insurance cards from Railway volume) ───
 app.get("/files/:uid/:filename", requireAuth, (req, res) => {
@@ -541,9 +526,6 @@ app.use((err, req, res, next) => {
 
 // ─── Start server ───
 const PORT = process.env.PORT || 3001;
-
-// Import COLUMNS here for the order-options route
-const { COLUMNS } = require("./config");
 
 app.listen(PORT, () => {
   console.log(`[reorder-api] Reorder patient form backend running on port ${PORT}`);

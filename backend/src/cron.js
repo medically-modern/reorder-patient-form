@@ -1,83 +1,20 @@
 // ─── Reorder Cron Scheduler ───
-// Runs 4x/day (every 6 hours) to check for patients whose
-// "Days to Order" column has flipped to "20 Days".
-// For each eligible patient:
-//   1. Generate a reorder token + link
-//   2. Store token + link in Monday
-//   3. Send initial reorder text via RingCentral
-//   4. Mark "Reorder Text Sent" column so we don't re-process
+// Runs daily to check for patients whose "Days to Order" column = "20 Days".
+// The cron itself is lightweight — it discovers eligible patients and enqueues
+// each one as a BullMQ job. The worker handles token generation, Monday writes,
+// and SMS sending with built-in rate limiting so the Express server stays responsive.
 
 const cron = require("node-cron");
-const { generateReorderToken } = require("./auth");
 const {
   getPatientsAt20DaysOut,
-  storeTokenInMonday,
-  markReorderTextSent,
 } = require("./monday");
-const { sendSMS, buildReorderText } = require("./sms");
-const { notifyCronError, notifySmsError, notifyCronSummary } = require("./notify");
+const { enqueueReorderPatient, enqueueSmsBatchVerification } = require("./queue");
+const { notifyCronError, notifyCronSummary } = require("./notify");
+const { redis } = require("./redis");
 
-const REORDER_URL = process.env.REORDER_URL || "https://reorder.medicallymodern.com";
 const PRODUCTION_SMS_ENABLED = process.env.PRODUCTION_SMS_ENABLED === "true";
 
-// ─── Process a single patient ───
-
-async function processPatient(patient) {
-  const { itemId, name, uid, phone, nextOrder } = patient;
-
-  if (!uid) {
-    console.warn(`[cron] Skipping item ${itemId} (${name}) — no UID`);
-    return { skipped: true, reason: "no UID" };
-  }
-
-  // SAFETY GATE: When production SMS is off, only process [TEST] patients.
-  // This prevents writing tokens/links/timestamps to real patient rows.
-  const isTestPatient = name && name.includes("[TEST]");
-  if (!PRODUCTION_SMS_ENABLED && !isTestPatient) {
-    console.log(`[cron] Skipping UID ${uid} (${name}) — production SMS off, not a [TEST] patient`);
-    return { skipped: true, reason: "production off" };
-  }
-
-  if (!phone) {
-    console.warn(`[cron] Skipping UID ${uid} (${name}) — no phone number`);
-    await notifyCronError(`Patient "${name}" has no phone number — cannot send reorder text`, uid);
-    return { skipped: true, reason: "no phone" };
-  }
-
-  try {
-    // 1. Generate reorder token (20-day TTL set in config)
-    const token = await generateReorderToken(uid);
-    const link = `${REORDER_URL}?token=${token}`;
-
-    // 2. Store in Monday (token + link columns)
-    await storeTokenInMonday(uid, token, link);
-
-    // 3. Send the initial reorder text
-    const messageText = buildReorderText(name, nextOrder || "TBD", link);
-    const smsResult = await sendSMS(phone, messageText, { patientName: name });
-
-    // 4. Mark as sent in Monday
-    const sentTimestamp = new Date().toLocaleString("en-US", {
-      timeZone: "America/New_York",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }) + " ET";
-    await markReorderTextSent(itemId, sentTimestamp);
-
-    console.log(`[cron] Processed UID ${uid} (${name}) — link generated, text sent`);
-    return { success: true, uid, simulated: smsResult.simulated || false };
-  } catch (err) {
-    console.error(`[cron] Error processing UID ${uid} (${name}):`, err.message);
-    await notifyCronError(`Failed to process "${name}": ${err.message}`, uid);
-    return { error: true, uid, message: err.message };
-  }
-}
-
-// ─── Main cron job ───
+// ─── Main cron job — discover and enqueue ───
 
 async function checkAndProcessReorders() {
   console.log(`[cron] ═══ Reorder check started at ${new Date().toISOString()} ═══`);
@@ -96,36 +33,52 @@ async function checkAndProcessReorders() {
       return true;
     });
 
-    console.log(`[cron] ${eligible.length} patient(s) eligible for reorder text`);
+    // Filter for production gate
+    const toProcess = eligible.filter((p) => {
+      if (!p.uid) {
+        console.warn(`[cron] Skipping item ${p.itemId} (${p.name}) — no UID`);
+        return false;
+      }
+      const isTestPatient = p.name && p.name.includes("[TEST]");
+      if (!PRODUCTION_SMS_ENABLED && !isTestPatient) {
+        console.log(`[cron] Skipping UID ${p.uid} (${p.name}) — production SMS off, not a [TEST] patient`);
+        return false;
+      }
+      if (!p.phone) {
+        console.warn(`[cron] Skipping UID ${p.uid} (${p.name}) — no phone number`);
+        notifyCronError(`Patient "${p.name}" has no phone number — cannot send reorder text`, p.uid).catch(() => {});
+        return false;
+      }
+      return true;
+    });
 
-    if (eligible.length === 0) {
+    console.log(`[cron] ${toProcess.length} patient(s) eligible for reorder text (${eligible.length - toProcess.length} skipped)`);
+
+    if (toProcess.length === 0) {
       console.log(`[cron] Nothing to process`);
-      return { processed: 0, skipped: patients.length };
+      await notifyCronSummary(0, 0, patients.length - toProcess.length);
+      return { processed: 0, enqueued: 0, skipped: patients.length };
     }
 
-    // Process sequentially to respect Monday rate limits
-    const results = [];
-    for (let i = 0; i < eligible.length; i++) {
-      const result = await processPatient(eligible[i]);
-      results.push(result);
+    // Generate a batch ID so the verification job can find all messages from this run
+    const batchId = `cron-${Date.now()}`;
 
-      // Small delay between patients to avoid rate limits
-      if (i < eligible.length - 1) {
-        await new Promise((r) => setTimeout(r, 2000));
+    // Enqueue each patient as a BullMQ job — worker handles the heavy lifting
+    let enqueued = 0;
+    for (const patient of toProcess) {
+      try {
+        await enqueueReorderPatient(patient, batchId);
+        enqueued++;
+      } catch (err) {
+        console.error(`[cron] Failed to enqueue UID ${patient.uid} (${patient.name}): ${err.message}`);
+        await notifyCronError(`Failed to enqueue "${patient.name}": ${err.message}`, patient.uid).catch(() => {});
       }
     }
 
-    const realSent = results.filter((r) => r.success && !r.simulated).length;
-    const simulated = results.filter((r) => r.success && r.simulated).length;
-    const errored = results.filter((r) => r.error).length;
-    const skipped = results.filter((r) => r.skipped).length;
+    console.log(`[cron] ═══ Reorder check complete: ${enqueued}/${toProcess.length} enqueued, worker will process with rate limiting ═══`);
+    await notifyCronSummary(enqueued, toProcess.length - enqueued, patients.length - toProcess.length);
 
-    console.log(`[cron] ═══ Reorder check complete: ${realSent} sent (real), ${simulated} simulated, ${errored} errors, ${skipped} skipped ═══`);
-
-    // Notify if there were any errors
-    await notifyCronSummary(realSent + simulated, errored, skipped);
-
-    return { processed: realSent, simulated, errors: errored, skipped };
+    return { enqueued, total: toProcess.length, skipped: patients.length - toProcess.length, batchId };
   } catch (err) {
     console.error(`[cron] Fatal error in reorder check:`, err.message, err.stack);
     await notifyCronError(`Fatal cron error: ${err.message}\n${err.stack || ""}`);
@@ -133,27 +86,60 @@ async function checkAndProcessReorders() {
   }
 }
 
-// ─── Schedule: runs at 6 AM, 12 PM, 6 PM, 12 AM ET ───
+// ─── Leader lock — prevents duplicate cron runs across Railway replicas ───
+
+const CRON_LOCK_KEY = "cron:reorder-check:lock";
+const CRON_LOCK_TTL = 1800; // 30 min — longer than any cron run should take
+
+async function acquireCronLock() {
+  const instanceId = `${process.env.RAILWAY_REPLICA_ID || process.pid}-${Date.now()}`;
+  const result = await redis.set(CRON_LOCK_KEY, instanceId, "EX", CRON_LOCK_TTL, "NX");
+  if (result === "OK") {
+    console.log(`[cron] Leader lock acquired (instance: ${instanceId})`);
+    return instanceId;
+  }
+  const holder = await redis.get(CRON_LOCK_KEY);
+  console.log(`[cron] Another instance holds the cron lock (holder: ${holder}) — skipping`);
+  return null;
+}
+
+async function releaseCronLock(instanceId) {
+  // Only release if we still hold it (prevents accidental release after TTL expiry)
+  const current = await redis.get(CRON_LOCK_KEY);
+  if (current === instanceId) {
+    await redis.del(CRON_LOCK_KEY);
+    console.log(`[cron] Leader lock released`);
+  }
+}
+
+// ─── Schedule: runs once daily at 1:30 PM ET ───
 
 function startCron() {
-  // Runs once daily at 1:30 PM Eastern Time
   const schedule = "30 13 * * *";
 
-  const task = cron.schedule(schedule, () => {
-    checkAndProcessReorders().catch((err) => {
+  const task = cron.schedule(schedule, async () => {
+    // Leader election — only one replica runs the cron
+    const lockId = await acquireCronLock().catch(() => null);
+    if (!lockId) return;
+
+    try {
+      await checkAndProcessReorders();
+    } catch (err) {
       console.error("[cron] Unhandled error:", err);
       notifyCronError(`Unhandled cron error: ${err.message}`);
-    });
+    } finally {
+      await releaseCronLock(lockId).catch(() => {});
+    }
   }, {
     timezone: "America/New_York",
   });
 
-  console.log(`[cron] Reorder scheduler started — runs daily at 1:30 PM ET`);
+  console.log(`[cron] Reorder scheduler started — runs daily at 1:30 PM ET (replica-safe)`);
 
   return task;
 }
 
 module.exports = {
   startCron,
-  checkAndProcessReorders,  // Exported for manual trigger / testing
+  checkAndProcessReorders,
 };

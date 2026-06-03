@@ -262,6 +262,60 @@ function buildConfirmationText(opts) {
   return lines.join("\n");
 }
 
+// ─── Check message delivery status ───
+
+/**
+ * Check the delivery status of a sent SMS via RingCentral message-store API.
+ * @param {string} messageId - The RC messageId returned from sendSMS
+ * @returns {{ messageId, status, to, direction, lastModifiedTime }}
+ *   status is one of: Queued, Sent, Delivered, DeliveryFailed, SendingFailed
+ */
+async function checkMessageStatus(messageId) {
+  const token = await getAccessToken();
+  const url = `${RC_SERVER_URL}/restapi/v1.0/account/~/extension/~/message-store/${messageId}`;
+
+  const res = await fetchWithRetry(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  }, { label: `SMS status check ${messageId}` });
+
+  if (res.ok) {
+    const data = await res.json();
+    return {
+      messageId: data.id,
+      status: data.messageStatus,
+      to: data.to?.[0]?.phoneNumber || null,
+      direction: data.direction,
+      lastModifiedTime: data.lastModifiedTime,
+    };
+  }
+
+  // 401 — force re-auth and retry once
+  if (res.status === 401) {
+    _accessToken = null;
+    _tokenExpiresAt = 0;
+    const freshToken = await getAccessToken();
+    const retry = await fetchWithRetry(url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${freshToken}` },
+    }, { label: `SMS status check ${messageId} (re-auth)` });
+
+    if (retry.ok) {
+      const data = await retry.json();
+      return {
+        messageId: data.id,
+        status: data.messageStatus,
+        to: data.to?.[0]?.phoneNumber || null,
+        direction: data.direction,
+        lastModifiedTime: data.lastModifiedTime,
+      };
+    }
+  }
+
+  const body = res._body || "unknown error";
+  throw new Error(`Failed to check message ${messageId} status (${res.status}): ${body.slice(0, 200)}`);
+}
+
 // ─── Health check ───
 
 function smsHealthCheck() {
@@ -274,6 +328,7 @@ function smsHealthCheck() {
 
 module.exports = {
   sendSMS,
+  checkMessageStatus,
   buildReorderText,
   buildConfirmationText,
   smsHealthCheck,

@@ -65,6 +65,10 @@ async function init() {
 
   try {
     const authRes = await apiFetch(`/auth/verify/${token}`, { method: "GET" });
+    if (authRes.alreadySubmitted) {
+      showSuccess(authRes.message);
+      return;
+    }
     if (!authRes.success) {
       showError(authRes.error || "Invalid or expired link.");
       return;
@@ -1008,40 +1012,46 @@ async function handleSubmit() {
   btn.disabled = true;
   btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Submitting...';
 
+  // Generate idempotency key once per submit attempt — reused on retry
+  if (!state._idempotencyKey) {
+    state._idempotencyKey = crypto.randomUUID();
+  }
+
   try {
     const submission = buildSubmission();
-
-    // Upload insurance cards if any
-    if (state.uploadedFiles.length > 0) {
-      btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Uploading files...';
-      const formData = new FormData();
-      state.uploadedFiles.forEach(f => formData.append("cards", f));
-      const uploadRes = await fetch(`${API_BASE}/api/upload-insurance-card`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${state.sessionToken}` },
-        credentials: "include",
-        body: formData,
-      });
-      const uploadData = await uploadRes.json();
-      if (uploadData.urls) submission.insuranceCardUrls = uploadData.urls;
-    }
 
     btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Saving...';
     showSubmitOverlay();
 
+    // Build request — multipart if files, JSON otherwise
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), 45000);
     let res;
     try {
+      const headers = {
+        "X-Idempotency-Key": state._idempotencyKey,
+        ...(state.sessionToken ? { Authorization: `Bearer ${state.sessionToken}` } : {}),
+      };
+
+      let body;
+      if (state.uploadedFiles.length > 0) {
+        // Multipart: files + JSON payload together
+        const formData = new FormData();
+        state.uploadedFiles.forEach(f => formData.append("cards", f));
+        formData.append("submission", JSON.stringify(submission));
+        body = formData;
+        // Don't set Content-Type — browser sets it with boundary
+      } else {
+        headers["Content-Type"] = "application/json";
+        body = JSON.stringify(submission);
+      }
+
       res = await fetch(`${API_BASE}/api/submit`, {
         method: "POST",
         credentials: "include",
         signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          ...(state.sessionToken ? { Authorization: `Bearer ${state.sessionToken}` } : {}),
-        },
-        body: JSON.stringify(submission),
+        headers,
+        body,
       });
     } finally {
       clearTimeout(timeout);
@@ -1050,12 +1060,14 @@ async function handleSubmit() {
     const result = await res.json();
 
     if (res.ok && result.success) {
+      state._idempotencyKey = null; // Clear on success
       completeOverlay(true);
       await new Promise(r => setTimeout(r, 600));
       hideOverlay();
       showSuccess(result.message);
     } else if (res.status === 207 || result.partial) {
       hideOverlay();
+      state._idempotencyKey = null; // New key on structural retry
       alert("Some of your information couldn't be saved. Please reload the page and try again. If the problem continues, text or call us.");
       btn.disabled = false;
       btn.textContent = 'Confirm';
@@ -1078,9 +1090,10 @@ async function handleSubmit() {
   } catch (err) {
     console.error("Submit error:", err);
     hideOverlay();
+    // Keep idempotency key so retry is safe
     const msg = err.name === "AbortError"
-      ? "The request is taking too long. Your internet may be slow. Please reload the page and try again."
-      : "We couldn't reach our server. Please check your connection, reload the page, and try again.";
+      ? "The request is taking too long. Your internet may be slow — please tap Confirm again to retry."
+      : "We couldn't reach our server. Please check your connection and tap Confirm again.";
     alert(msg);
     btn.disabled = false;
     btn.textContent = 'Confirm';

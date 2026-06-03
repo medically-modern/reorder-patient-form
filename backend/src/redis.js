@@ -83,6 +83,17 @@ async function hasSubmitted(uid) {
   return !!val;
 }
 
+// ─── Idempotency key (prevents duplicate submissions on retry) ───
+
+async function getIdempotencyResult(key) {
+  const raw = await redis.get(`idempotent:${key}`);
+  return raw ? JSON.parse(raw) : null;
+}
+
+async function setIdempotencyResult(key, result, ttlSeconds = 3600) {
+  await redis.set(`idempotent:${key}`, JSON.stringify(result), "EX", ttlSeconds);
+}
+
 // ─── Health check ───
 
 async function healthCheck() {
@@ -101,5 +112,6 @@ module.exports = {
   blacklistSession, isSessionBlacklisted,
   cachePatientData, getCachedPatientData, invalidatePatientCache,
   acquireSubmissionLock, releaseSubmissionLock, markSubmitted, hasSubmitted,
+  getIdempotencyResult, setIdempotencyResult,
   healthCheck,
 };

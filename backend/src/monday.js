@@ -4,7 +4,7 @@ const {
   ORDER_RESPONSE_INDEX,
   INSURANCE_RESPONSE_INDEX,
 } = require("./config");
-const { enqueueWriteAndWait, startWorker } = require("./queue");
+const { enqueueWriteAndWait, startWorker, startReorderWorker, startSmsWorker, startSmsVerifyWorker } = require("./queue");
 const { notifyMondayError } = require("./notify");
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
@@ -897,6 +897,21 @@ function initWriteQueue() {
   } catch (err) {
     console.warn("[monday] Write queue unavailable, using direct writes:", err.message);
     _queueEnabled = false;
+  }
+  try {
+    startReorderWorker();
+  } catch (err) {
+    console.warn("[monday] Reorder worker unavailable:", err.message);
+  }
+  try {
+    startSmsWorker();
+  } catch (err) {
+    console.warn("[monday] SMS worker unavailable:", err.message);
+  }
+  try {
+    startSmsVerifyWorker();
+  } catch (err) {
+    console.warn("[monday] SMS verify worker unavailable:", err.message);
   }
 }
 
