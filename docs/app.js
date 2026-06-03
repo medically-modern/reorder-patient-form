@@ -527,12 +527,13 @@ function stepQty(setNum, delta) {
   const combinedMax = getCombinedMaxQty();
   let current = parseInt(state[key], 10) || 0;
   let other = state.hasSecondSet ? (parseInt(state[otherKey], 10) || 0) : 0;
+  const minQty = setNum === 1 ? 1 : 0;
   let newVal = current + delta;
-  newVal = Math.max(0, newVal);
+  newVal = Math.max(minQty, newVal);
   const roomLeft = combinedMax - other;
   const cappedAtMax = delta > 0 && newVal > roomLeft;
   newVal = Math.min(newVal, roomLeft);
-  newVal = Math.max(0, newVal);
+  newVal = Math.max(minQty, newVal);
   state[key] = newVal;
   document.getElementById(`inf-qty-${setNum}`).textContent = String(newVal);
 
@@ -575,7 +576,8 @@ function updateQtyButtons() {
     const otherVal = state.hasSecondSet ? (parseInt(state[setNum === 1 ? "infQty2" : "infQty1"], 10) || 0) : 0;
     const roomLeft = combinedMax - otherVal;
     const btns = row.querySelectorAll(".stepper-btn");
-    if (btns[0]) btns[0].classList.toggle("at-cap", val <= 0);
+    const minQty = setNum === 1 ? 1 : 0;
+    if (btns[0]) btns[0].classList.toggle("at-cap", val <= minQty);
     if (btns[1]) btns[1].classList.toggle("at-cap", val >= roomLeft);
     if (val >= roomLeft) anyAtCap = true;
   });
