@@ -113,6 +113,10 @@ function requireAuth(req, res, next) {
         return res.status(401).json({ error: "Session expired" });
       }
       next();
+    }).catch((err) => {
+      console.error("[auth] Blacklist check failed:", err.message);
+      // Fail open — JWT is still cryptographically valid, allow the request
+      next();
     });
   } catch (err) {
     if (err.name === "TokenExpiredError") {

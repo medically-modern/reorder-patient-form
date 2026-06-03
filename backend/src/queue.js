@@ -183,15 +183,26 @@ function startReorderWorker() {
     }
   );
 
-  _reorderWorker.on("completed", (job, result) => {
+  _reorderWorker.on("completed", async (job, result) => {
     console.log(`[reorder-queue] Completed: ${result.name} (${result.uid})`);
+    try {
+      await checkBatchComplete(job.data.batchId);
+    } catch (err) {
+      console.error(`[reorder-queue] Batch completion check error: ${err.message}`);
+    }
   });
 
-  _reorderWorker.on("failed", (job, err) => {
+  _reorderWorker.on("failed", async (job, err) => {
     const patient = job.data.patient;
     if (job.attemptsMade >= job.opts.attempts) {
       console.error(`[reorder-queue] DEAD LETTER — ${patient.name} (${patient.uid}) failed after ${job.attemptsMade} attempts: ${err.message}`);
       notifyCronError(`Reorder processing failed for "${patient.name}" after all retries: ${err.message}`, patient.uid).catch(() => {});
+      // Count final failures toward batch completion so verification still fires
+      try {
+        await checkBatchComplete(job.data.batchId);
+      } catch (checkErr) {
+        console.error(`[reorder-queue] Batch completion check error: ${checkErr.message}`);
+      }
     }
   });
 
@@ -199,36 +210,46 @@ function startReorderWorker() {
     console.error("[reorder-queue] Worker error:", err.message);
   });
 
-  // ─── Batch completion listener ───
-  // When all jobs in a batch are done, enqueue the delivery verification.
-  // Uses atomic RENAME to claim the key — prevents duplicate verification
-  // if multiple replica workers fire "drained" at the same time.
-  _reorderWorker.on("drained", async () => {
-    try {
-      const keys = await redis.keys("sms-verify:cron-*");
-      for (const key of keys) {
-        const claimKey = `${key}:claimed`;
-        try {
-          // Atomic: if another replica already renamed it, this throws
-          await redis.rename(key, claimKey);
-        } catch {
-          continue; // Another replica claimed it — skip
-        }
-        const batchId = key.replace("sms-verify:", "");
-        const items = await redis.lrange(claimKey, 0, -1);
-        await redis.del(claimKey);
-        if (items.length > 0) {
-          const sentMessages = items.map(i => JSON.parse(i));
-          await enqueueSmsBatchVerification(sentMessages);
-          console.log(`[reorder-queue] Batch ${batchId} complete — ${sentMessages.length} message(s) queued for delivery verification`);
-        }
-      }
-    } catch (err) {
-      console.error("[reorder-queue] Error processing batch verification:", err.message);
-    }
-  });
-
   console.log("[reorder-queue] Reorder patient processing worker ready (30/min rate limit)");
+}
+
+// ─── Batch completion tracking ───
+// Replaces the broken "drained" event. Each job completion (success or final failure)
+// atomically increments a counter. When counter == expected (set by cron after enqueuing),
+// the batch is claimed via NX and verification is enqueued exactly once.
+// No redis.keys() — uses deterministic keys keyed by batchId.
+
+async function checkBatchComplete(batchId) {
+  if (!batchId) return;
+  const { redis } = require("./redis");
+
+  const completedCount = await redis.incr(`sms-verify:${batchId}:completed`);
+  await redis.expire(`sms-verify:${batchId}:completed`, 7200);
+
+  const expectedStr = await redis.get(`sms-verify:${batchId}:expected`);
+  if (!expectedStr) return; // Cron hasn't finished enqueuing yet — next completion will re-check
+
+  if (completedCount < parseInt(expectedStr, 10)) return; // Not all jobs done yet
+
+  // All jobs in this batch are done — atomically claim to prevent duplicate verification
+  const claimed = await redis.set(`sms-verify:${batchId}:claimed`, "1", "EX", 7200, "NX");
+  if (claimed !== "OK") return; // Another replica already claimed it
+
+  const items = await redis.lrange(`sms-verify:${batchId}`, 0, -1);
+  // Cleanup tracking keys (leave claimed key to prevent re-trigger)
+  await redis.del(
+    `sms-verify:${batchId}`,
+    `sms-verify:${batchId}:expected`,
+    `sms-verify:${batchId}:completed`
+  );
+
+  if (items.length > 0) {
+    const sentMessages = items.map(i => JSON.parse(i));
+    await enqueueSmsBatchVerification(sentMessages);
+    console.log(`[reorder-queue] Batch ${batchId} — all ${completedCount} jobs done, ${sentMessages.length} message(s) queued for delivery verification`);
+  } else {
+    console.log(`[reorder-queue] Batch ${batchId} — all ${completedCount} jobs done, no messages to verify (all simulated or failed)`);
+  }
 }
 
 async function enqueueReorderPatient(patient, batchId) {
@@ -494,6 +515,7 @@ module.exports = {
   enqueueReorderPatient,
   enqueueConfirmationSms,
   enqueueSmsBatchVerification,
+  checkBatchComplete,
   queueHealthCheck,
   closeQueue,
 };

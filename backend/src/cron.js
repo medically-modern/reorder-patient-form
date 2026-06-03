@@ -8,7 +8,7 @@ const cron = require("node-cron");
 const {
   getPatientsAt20DaysOut,
 } = require("./monday");
-const { enqueueReorderPatient, enqueueSmsBatchVerification } = require("./queue");
+const { enqueueReorderPatient, checkBatchComplete } = require("./queue");
 const { notifyCronError, notifyCronSummary } = require("./notify");
 const { redis } = require("./redis");
 
@@ -75,6 +75,16 @@ async function checkAndProcessReorders() {
       }
     }
 
+    // Set expected count AFTER all enqueuing so checkBatchComplete knows when all jobs are done.
+    // If some failed to enqueue, expected = enqueued (not toProcess.length).
+    if (enqueued > 0) {
+      await redis.set(`sms-verify:${batchId}:expected`, enqueued, "EX", 7200);
+      // In case all jobs already completed before we set expected
+      await checkBatchComplete(batchId).catch(err =>
+        console.error(`[cron] Post-enqueue batch check error: ${err.message}`)
+      );
+    }
+
     console.log(`[cron] ═══ Reorder check complete: ${enqueued}/${toProcess.length} enqueued, worker will process with rate limiting ═══`);
     await notifyCronSummary(enqueued, toProcess.length - enqueued, patients.length - toProcess.length);
 
@@ -104,10 +114,13 @@ async function acquireCronLock() {
 }
 
 async function releaseCronLock(instanceId) {
-  // Only release if we still hold it (prevents accidental release after TTL expiry)
-  const current = await redis.get(CRON_LOCK_KEY);
-  if (current === instanceId) {
-    await redis.del(CRON_LOCK_KEY);
+  // Atomic check-and-delete via Lua — prevents race where TTL expires,
+  // another replica acquires the lock, and our DEL wipes their lock.
+  const released = await redis.eval(
+    `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`,
+    1, CRON_LOCK_KEY, instanceId
+  );
+  if (released === 1) {
     console.log(`[cron] Leader lock released`);
   }
 }

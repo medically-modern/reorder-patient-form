@@ -15,7 +15,7 @@ const { uploadInsuranceCard } = require("./s3");
 const { queueHealthCheck } = require("./queue");
 const { startCron, checkAndProcessReorders } = require("./cron");
 const { notifySubmissionError, notifySmsError, notifyUnhandled, notifyError } = require("./notify");
-const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, deleteReorderToken, getIdempotencyResult, setIdempotencyResult } = require("./redis");
+const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, deleteReorderToken, getIdempotencyResult, setIdempotencyResult, markSubmitted, hasSubmitted } = require("./redis");
 const { enqueueConfirmationSms } = require("./queue");
 const { COLUMNS } = require("./config");
 
@@ -138,6 +138,19 @@ app.get("/auth/verify/:token", authLimiter, async (req, res) => {
         }
       }
       return res.status(result.status).json({ error: result.error });
+    }
+
+    // Check if patient already submitted — catches the case where token was
+    // recovered from Monday after Redis deletion (the 401-branch check above
+    // only fires when token verification fails; this catches when it succeeds
+    // via Monday fallback re-seeding).
+    const alreadyDone = await hasSubmitted(result.uid);
+    if (alreadyDone) {
+      return res.status(200).json({
+        success: false,
+        alreadySubmitted: true,
+        message: "Your order has already been submitted. If you need to make changes, please text or call us.",
+      });
     }
 
     // Set session cookie
@@ -451,6 +464,10 @@ app.post("/api/submit", apiLimiter, requireAuth, upload.array("cards", 2), async
       if (idempotencyKey) {
         await setIdempotencyResult(idempotencyKey, { status: responseStatus, body: responseBody });
       }
+
+      // Mark as submitted — prevents re-submission even if token is recovered from Monday.
+      // TTL = 30 days (outlasts the 20-day token window with margin).
+      await markSubmitted(req.uid, 86400 * 30);
 
       res.status(responseStatus).json(responseBody);
 
