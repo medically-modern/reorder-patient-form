@@ -1266,6 +1266,7 @@ function showError(msg) {
 }
 
 function showSuccess(message) {
+  document.getElementById("loading-screen").style.display = "none";
   document.getElementById("app").style.display = "none";
   const screen = document.getElementById("success-screen");
   screen.style.display = "flex";
