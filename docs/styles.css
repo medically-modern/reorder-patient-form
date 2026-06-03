@@ -453,3 +453,8 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
   background: #5a8a7a;
   color: white;
 }
+
+/* MM animated logo on success/error screens */
+.screen-logo {
+  width: 72px; height: 72px; margin-bottom: 1.25rem;
+}
