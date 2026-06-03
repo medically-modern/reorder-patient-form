@@ -136,8 +136,8 @@ async function checkAndProcessReorders() {
 // ─── Schedule: runs at 6 AM, 12 PM, 6 PM, 12 AM ET ───
 
 function startCron() {
-  // Runs once daily at 9 AM Eastern Time
-  const schedule = "0 9 * * *";
+  // Runs once daily at 1:30 PM Eastern Time
+  const schedule = "30 13 * * *";
 
   const task = cron.schedule(schedule, () => {
     checkAndProcessReorders().catch((err) => {
@@ -148,7 +148,7 @@ function startCron() {
     timezone: "America/New_York",
   });
 
-  console.log(`[cron] Reorder scheduler started — runs daily at 9 AM ET`);
+  console.log(`[cron] Reorder scheduler started — runs daily at 1:30 PM ET`);
 
   return task;
 }
