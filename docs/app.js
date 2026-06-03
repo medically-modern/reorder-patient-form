@@ -1012,10 +1012,12 @@ async function handleSubmit() {
   btn.disabled = true;
   btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Submitting...';
 
-  // Generate idempotency key once per submit attempt — reused on retry
-  if (!state._idempotencyKey) {
+  // Fresh key each submit so changed form data isn't masked by a cached response.
+  // On network error (catch block), we preserve the key so a pure retry is safe.
+  if (!state._retryingSubmit) {
     state._idempotencyKey = crypto.randomUUID();
   }
+  state._retryingSubmit = false;
 
   try {
     const submission = buildSubmission();
@@ -1060,14 +1062,14 @@ async function handleSubmit() {
     const result = await res.json();
 
     if (res.ok && result.success) {
-      state._idempotencyKey = null; // Clear on success
+      // Key is single-use — fresh key generated on next submit
       completeOverlay(true);
       await new Promise(r => setTimeout(r, 600));
       hideOverlay();
       showSuccess(result.message);
     } else if (res.status === 207 || result.partial) {
       hideOverlay();
-      state._idempotencyKey = null; // New key on structural retry
+      // Fresh key will be generated on next submit
       alert("Some of your information couldn't be saved. Please reload the page and try again. If the problem continues, text or call us.");
       btn.disabled = false;
       btn.textContent = 'Confirm';
@@ -1090,7 +1092,8 @@ async function handleSubmit() {
   } catch (err) {
     console.error("Submit error:", err);
     hideOverlay();
-    // Keep idempotency key so retry is safe
+    // Keep idempotency key AND flag as retry so next submit reuses it
+    state._retryingSubmit = true;
     const msg = err.name === "AbortError"
       ? "The request is taking too long. Your internet may be slow — please tap Confirm again to retry."
       : "We couldn't reach our server. Please check your connection and tap Confirm again.";
