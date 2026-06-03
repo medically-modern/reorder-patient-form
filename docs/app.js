@@ -168,10 +168,8 @@ function renderProductRows() {
     const row = document.getElementById("prod-sensors");
     row.style.display = "";
     document.getElementById("prod-sensors-name").textContent = pd.sensorsType || "CGM Sensor";
-    const rawCgm = parseInt(pd.cgmQty, 10);
-    const cgmQty = isNaN(rawCgm) ? 3 : rawCgm;
-    document.getElementById("prod-sensors-qty").textContent = String(cgmQty || 3);
-    document.getElementById("prod-sensors-unit").textContent = (cgmQty || 3) === 1 ? "box" : "boxes";
+    document.getElementById("prod-sensors-qty").textContent = "90-day";
+    document.getElementById("prod-sensors-unit").textContent = "supply";
   }
 
   // Infusion Set 1
