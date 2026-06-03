@@ -1213,7 +1213,9 @@ function addApartment() {
 
       if (status === "OK" && results?.length > 0) {
         const result = results[0];
-        const formatted = result.formatted_address.replace(/(\b\d{5})-\d{4}\b/g, "$1");
+        const formatted = result.formatted_address
+          .replace(/(\b\d{5})-\d{4}\b/g, "$1")
+          .replace(/#(\d)/g, "Apt $1");
 
         // Update state
         const input = document.getElementById("address-input");
