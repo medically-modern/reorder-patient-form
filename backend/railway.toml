@@ -1,6 +1,5 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm ci --production"
 
 [deploy]
 startCommand = "node --max-old-space-size=512 src/index.js"
