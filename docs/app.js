@@ -838,7 +838,7 @@ function updateOop() {
   const ins = (state.patientData.primaryInsurance || "").toLowerCase();
   const isMedicaid = ins.includes("medicaid");
   const durEl = document.getElementById("supply-duration");
-  if (durEl) durEl.textContent = isMedicaid ? "60 day supply" : "90 day supply";
+  if (durEl) durEl.textContent = isMedicaid ? "60 Day Supply" : "90 Day Supply";
 }
 
 function getOopEstimate() {
