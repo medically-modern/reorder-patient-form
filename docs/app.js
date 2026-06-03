@@ -1141,9 +1141,10 @@ function attachAutocomplete() {
     updateAddressDisplay(input.value);
     checkApartmentWarning(input.value);
 
-    // Show the apartment addon
+    // Show apartment addon only if address doesn't already contain one
+    const aptPatterns = /\b(apt|apartment|unit|suite|ste|#|floor|fl|bldg|building|rm|room)\b/i;
     const aptAddon = document.getElementById("apt-addon");
-    if (aptAddon) {
+    if (aptAddon && !aptPatterns.test(input.value)) {
       aptAddon.classList.remove("hidden");
       document.getElementById("apt-input").value = "";
       document.getElementById("apt-addon-error").classList.add("hidden");
