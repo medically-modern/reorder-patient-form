@@ -66,7 +66,7 @@ async function init() {
   try {
     const authRes = await apiFetch(`/auth/verify/${token}`, { method: "GET" });
     if (authRes.alreadySubmitted) {
-      showSuccess(authRes.message);
+      showSuccess(authRes.message, { hideSubtext: true });
       return;
     }
     if (!authRes.success) {
@@ -1265,12 +1265,15 @@ function showError(msg) {
   document.getElementById("error-message").textContent = msg;
 }
 
-function showSuccess(message) {
+function showSuccess(message, opts = {}) {
   document.getElementById("loading-screen").style.display = "none";
   document.getElementById("app").style.display = "none";
   const screen = document.getElementById("success-screen");
   screen.style.display = "flex";
   document.getElementById("success-message").textContent = message;
+  // Hide the "we'll text you" subtitle for already-submitted views
+  const sub = document.getElementById("success-sub");
+  if (sub && opts.hideSubtext) sub.style.display = "none";
   window.scrollTo(0, 0);
 }
 
