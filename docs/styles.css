@@ -454,6 +454,26 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
   color: white;
 }
 
+/* ─── Apartment add-on ─── */
+.apt-addon{margin-top:12px;animation:panelIn .2s ease-out}
+.apt-addon-row{display:flex;align-items:center;gap:8px}
+.apt-addon-label{font-family:'IBM Plex Mono',monospace;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);white-space:nowrap}
+.apt-addon-input{flex:1;min-width:0;max-width:120px;padding:8px 10px;font-size:.9rem;min-height:38px}
+.apt-add-btn{
+  display:inline-flex;align-items:center;gap:4px;
+  font-family:'Poppins',sans-serif;font-size:.8rem;font-weight:600;
+  padding:8px 14px;border-radius:99px;border:1.5px solid var(--brand);
+  background:var(--brand-light);color:var(--brand-dark);
+  cursor:pointer;transition:all .15s;white-space:nowrap;
+  -webkit-tap-highlight-color:transparent;
+}
+.apt-add-btn:hover{background:var(--brand);color:#fff}
+.apt-add-btn:active{transform:scale(.97)}
+.apt-add-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.apt-add-btn i{font-size:14px}
+.apt-addon-error{font-size:.8rem;color:var(--danger);margin-top:6px;font-weight:500}
+.apt-addon-success{font-size:.8rem;color:var(--success);margin-top:6px;font-weight:500;display:flex;align-items:center;gap:4px}
+
 /* MM animated logo on success/error screens */
 .screen-logo {
   width: 72px; height: 72px; margin-bottom: 1.25rem;

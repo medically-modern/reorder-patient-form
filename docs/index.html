@@ -140,7 +140,6 @@
           <div class="edit-section" id="edit-sensors" style="display:none">
             <div class="edit-section-head">
               <label class="field-label">CGM Sensor</label>
-              <button class="skip-btn" id="sensors-skip-btn" onclick="toggleSkip('sensors')">Skip this cycle</button>
             </div>
             <select id="sensor-type-select" class="form-select"></select>
           </div>
@@ -149,7 +148,6 @@
           <div class="edit-section" id="edit-infusion" style="display:none">
             <div class="edit-section-head">
               <label class="field-label" id="inf-section-label">Infusion Set</label>
-              <button class="skip-btn" id="infusion-skip-btn" onclick="toggleSkip('infusion')">Skip this cycle</button>
             </div>
 
             <div class="inf-edit-row" id="inf-edit-row-1">
@@ -214,9 +212,16 @@
           <div class="edit-section" id="edit-cartridges" style="display:none">
             <div class="edit-section-head">
               <label class="field-label">Cartridges</label>
-              <button class="skip-btn" id="cartridges-skip-btn" onclick="toggleSkip('cartridges')">Skip this cycle</button>
             </div>
             <div class="cartridge-display" id="cartridge-display"></div>
+            <div class="qty-row" style="margin-top:8px">
+              <span class="qty-row-label">Boxes</span>
+              <div class="stepper">
+                <button class="stepper-btn" onclick="stepCartridgeQty(-1)" aria-label="Decrease">−</button>
+                <span class="stepper-val" id="cartridge-qty-stepper">3</span>
+                <button class="stepper-btn" onclick="stepCartridgeQty(1)" aria-label="Increase">+</button>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -241,6 +246,16 @@
           <input type="text" id="address-input" class="form-input" placeholder="Start typing to search..." autocomplete="off">
           <p class="field-hint">Select your address from the dropdown suggestions.</p>
           <div class="field-error hidden" id="address-error"></div>
+
+          <!-- Apartment add-on (appears after Google autocomplete selection) -->
+          <div class="apt-addon hidden" id="apt-addon">
+            <div class="apt-addon-row">
+              <label class="apt-addon-label" for="apt-input">Apt.</label>
+              <input type="text" id="apt-input" class="form-input apt-addon-input" placeholder="#" inputmode="text">
+              <button class="apt-add-btn" id="apt-add-btn" onclick="addApartment()"><i class="ti ti-plus"></i> ADD</button>
+            </div>
+            <div class="apt-addon-error hidden" id="apt-addon-error">Error with address addition for this address, reach out</div>
+          </div>
         </div>
       </section>
 

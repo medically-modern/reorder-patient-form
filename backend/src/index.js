@@ -474,12 +474,7 @@ app.post("/api/submit", apiLimiter, requireAuth, upload.array("cards", 2), async
       // ─── Enqueue confirmation SMS via BullMQ (persisted, auto-retries) ───
       // Send for confirm and delay responses (not cancel — patient is leaving)
       if (submission.response === "confirm" || submission.response === "delay") {
-        const optOuts = {
-          sensorsOptOut: submission.orderChanges?.sensorsOptOut || false,
-          cartridgesOptOut: submission.orderChanges?.cartridgesOptOut || false,
-          infusionOptOut: submission.orderChanges?.infusionOptOut || false,
-        };
-        await enqueueConfirmationSms(req.uid, optOuts);
+        await enqueueConfirmationSms(req.uid, {});
       }
     } finally {
       await releaseSubmissionLock(req.uid);

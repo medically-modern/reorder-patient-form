@@ -296,12 +296,12 @@ function startSmsWorker() {
         name: details.name,
         address: details.address,
         nextOrder: details.nextOrder,
-        sensorsType: optOuts.sensorsOptOut ? null : details.sensorsType,
-        suppliesType: optOuts.cartridgesOptOut ? null : details.suppliesType,
-        infusionSet1: optOuts.infusionOptOut ? null : details.infusionSet1,
-        infQty1: optOuts.infusionOptOut ? null : details.infQty1,
-        infusionSet2: optOuts.infusionOptOut ? null : details.infusionSet2,
-        infQty2: optOuts.infusionOptOut ? null : details.infQty2,
+        sensorsType: details.sensorsType,
+        suppliesType: details.suppliesType,
+        infusionSet1: details.infusionSet1,
+        infQty1: details.infQty1,
+        infusionSet2: details.infusionSet2,
+        infQty2: details.infQty2,
       });
 
       await sendSMS(details.phone, messageText, { patientName: details.name });

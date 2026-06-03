@@ -20,11 +20,9 @@ const state = {
   delayLessThan20Days: false,
 
   // Items
-  sensorsOptOut: false,
-  cartridgesOptOut: false,
-  infusionOptOut: false,
   infQty1: 3,
   infQty2: 0,
+  cartridgeQty: 3,
   hasSecondSet: false,
 
   // Snapshots of initial state (for change detection)
@@ -172,15 +170,8 @@ function renderProductRows() {
     document.getElementById("prod-sensors-name").textContent = pd.sensorsType || "CGM Sensor";
     const rawCgm = parseInt(pd.cgmQty, 10);
     const cgmQty = isNaN(rawCgm) ? 3 : rawCgm;
-    if (cgmQty === 0) {
-      state.sensorsOptOut = true;
-      document.getElementById("prod-sensors-qty").textContent = "0";
-      document.getElementById("prod-sensors-unit").textContent = "SKIPPED";
-      row.classList.add("skipped");
-    } else {
-      document.getElementById("prod-sensors-qty").textContent = String(cgmQty);
-      document.getElementById("prod-sensors-unit").textContent = cgmQty === 1 ? "box" : "boxes";
-    }
+    document.getElementById("prod-sensors-qty").textContent = String(cgmQty || 3);
+    document.getElementById("prod-sensors-unit").textContent = (cgmQty || 3) === 1 ? "box" : "boxes";
   }
 
   // Infusion Set 1
@@ -190,17 +181,9 @@ function renderProductRows() {
     document.getElementById("prod-inf1-name").textContent = pd.infusionSet1 || "Infusion Set";
     const raw1 = parseInt(pd.infQty1, 10);
     const qty1 = isNaN(raw1) ? 3 : raw1;
-    if (qty1 === 0) {
-      state.infusionOptOut = true;
-      state.infQty1 = 0;
-      document.getElementById("prod-inf1-qty").textContent = "0";
-      document.getElementById("prod-inf1-unit").textContent = "SKIPPED";
-      row.classList.add("skipped");
-    } else {
-      state.infQty1 = qty1;
-      document.getElementById("prod-inf1-qty").textContent = String(qty1);
-      document.getElementById("prod-inf1-unit").textContent = qty1 === 1 ? "box" : "boxes";
-    }
+    state.infQty1 = qty1;
+    document.getElementById("prod-inf1-qty").textContent = String(qty1);
+    document.getElementById("prod-inf1-unit").textContent = qty1 === 1 ? "box" : "boxes";
   }
 
   // Infusion Set 2
@@ -228,16 +211,10 @@ function renderProductRows() {
     row.style.display = "";
     document.getElementById("prod-cartridges-name").textContent = (pd.suppliesType || "Pump") + " cartridge";
     const rawCart = parseInt(pd.cartridgeQty, 10);
-    const cartQty = isNaN(rawCart) ? 3 : rawCart;
-    if (cartQty === 0) {
-      state.cartridgesOptOut = true;
-      document.getElementById("prod-cartridges-qty").textContent = "0";
-      document.getElementById("prod-cartridges-unit").textContent = "SKIPPED";
-      row.classList.add("skipped");
-    } else {
-      document.getElementById("prod-cartridges-qty").textContent = String(cartQty);
-      document.getElementById("prod-cartridges-unit").textContent = cartQty === 1 ? "box" : "boxes";
-    }
+    const cartQty = isNaN(rawCart) ? 3 : Math.max(rawCart, 1);
+    state.cartridgeQty = cartQty;
+    document.getElementById("prod-cartridges-qty").textContent = String(cartQty);
+    document.getElementById("prod-cartridges-unit").textContent = cartQty === 1 ? "box" : "boxes";
   }
 }
 
@@ -277,28 +254,8 @@ function renderOrderEditPanel() {
   if (pd.servingSupplies) {
     document.getElementById("edit-cartridges").style.display = "";
     document.getElementById("cartridge-display").textContent = pd.suppliesType || "Cartridges";
-    if (state.cartridgesOptOut) {
-      const btn = document.getElementById("cartridges-skip-btn");
-      const editSection = document.getElementById("edit-cartridges");
-      if (btn) { btn.classList.add("active"); btn.textContent = "Skipping \u2713"; }
-      if (editSection) editSection.classList.add("skipped");
-    }
-  }
-
-  // Sensors edit — pre-skip if qty was 0
-  if (pd.servingSensors && state.sensorsOptOut) {
-    const btn = document.getElementById("sensors-skip-btn");
-    const editSection = document.getElementById("edit-sensors");
-    if (btn) { btn.classList.add("active"); btn.textContent = "Skipping \u2713"; }
-    if (editSection) editSection.classList.add("skipped");
-  }
-
-  // Infusion edit — pre-skip if qty was 0
-  if (pd.servingInfusionSet1 && state.infusionOptOut) {
-    const btn = document.getElementById("infusion-skip-btn");
-    const editSection = document.getElementById("edit-infusion");
-    if (btn) { btn.classList.add("active"); btn.textContent = "Skipping \u2713"; }
-    if (editSection) editSection.classList.add("skipped");
+    document.getElementById("cartridge-qty-stepper").textContent = String(state.cartridgeQty);
+    updateCartridgeQtyButtons();
   }
 
   // Snapshot initial state
@@ -494,50 +451,31 @@ function updateProductRowsFromEdits() {
 
   // Sensors
   if (pd.servingSensors) {
-    const row = document.getElementById("prod-sensors");
-    if (state.sensorsOptOut) {
-      row.classList.add("skipped");
-    } else {
-      row.classList.remove("skipped");
-      const newType = document.getElementById("sensor-type-select")?.value;
-      if (newType) document.getElementById("prod-sensors-name").textContent = newType;
-    }
+    const newType = document.getElementById("sensor-type-select")?.value;
+    if (newType) document.getElementById("prod-sensors-name").textContent = newType;
   }
 
   // Infusion 1
   if (pd.servingInfusionSet1) {
-    const row1 = document.getElementById("prod-inf1");
-    if (state.infusionOptOut) {
-      row1.classList.add("skipped");
-      const row2 = document.getElementById("prod-inf2");
-      if (row2) row2.classList.add("skipped");
-    } else {
-      row1.classList.remove("skipped");
-      document.getElementById("prod-inf1-name").textContent = getInfusionLabel(1) || pd.infusionSet1;
-      document.getElementById("prod-inf1-qty").textContent = String(state.infQty1);
-      document.getElementById("prod-inf1-unit").textContent = state.infQty1 === 1 ? "box" : "boxes";
+    document.getElementById("prod-inf1-name").textContent = getInfusionLabel(1) || pd.infusionSet1;
+    document.getElementById("prod-inf1-qty").textContent = String(state.infQty1);
+    document.getElementById("prod-inf1-unit").textContent = state.infQty1 === 1 ? "box" : "boxes";
 
-      const row2 = document.getElementById("prod-inf2");
-      if (state.hasSecondSet) {
-        row2.style.display = "";
-        row2.classList.remove("skipped");
-        document.getElementById("prod-inf2-name").textContent = getInfusionLabel(2) || "Infusion Set 2";
-        document.getElementById("prod-inf2-qty").textContent = String(state.infQty2);
-        document.getElementById("prod-inf2-unit").textContent = state.infQty2 === 1 ? "box" : "boxes";
-      } else if (!pd.servingInfusionSet2) {
-        row2.style.display = "none";
-      }
+    const row2 = document.getElementById("prod-inf2");
+    if (state.hasSecondSet) {
+      row2.style.display = "";
+      document.getElementById("prod-inf2-name").textContent = getInfusionLabel(2) || "Infusion Set 2";
+      document.getElementById("prod-inf2-qty").textContent = String(state.infQty2);
+      document.getElementById("prod-inf2-unit").textContent = state.infQty2 === 1 ? "box" : "boxes";
+    } else if (!pd.servingInfusionSet2) {
+      row2.style.display = "none";
     }
   }
 
   // Cartridges
   if (pd.servingSupplies) {
-    const row = document.getElementById("prod-cartridges");
-    if (state.cartridgesOptOut) {
-      row.classList.add("skipped");
-    } else {
-      row.classList.remove("skipped");
-    }
+    document.getElementById("prod-cartridges-qty").textContent = String(state.cartridgeQty);
+    document.getElementById("prod-cartridges-unit").textContent = state.cartridgeQty === 1 ? "box" : "boxes";
   }
 
   updateOop();
@@ -547,65 +485,27 @@ function updateProductRowsFromEdits() {
 // SKIP TOGGLES
 // ═══════════════════════════════════════════════════════
 
-function allItemsSkipped(sensorsOut, cartridgesOut, infusionOut) {
-  const pd = state.patientData;
-  if (!pd) return false;
-  const hasSensors = pd.servingSensors && !sensorsOut;
-  const hasCartridges = pd.servingSupplies && !cartridgesOut;
-  const hasInfusion = (pd.servingInfusionSet1 || pd.servingInfusionSet2) && !infusionOut;
-  return !hasSensors && !hasCartridges && !hasInfusion;
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+// CARTRIDGE QUANTITY STEPPER (1\u20133)
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+
+function stepCartridgeQty(delta) {
+  let newVal = state.cartridgeQty + delta;
+  newVal = Math.max(1, Math.min(3, newVal));
+  state.cartridgeQty = newVal;
+  document.getElementById("cartridge-qty-stepper").textContent = String(newVal);
+  document.getElementById("prod-cartridges-qty").textContent = String(newVal);
+  document.getElementById("prod-cartridges-unit").textContent = newVal === 1 ? "box" : "boxes";
+  updateCartridgeQtyButtons();
+  updateOop();
 }
 
-function toggleSkip(section) {
-  const btn = document.getElementById(`${section}-skip-btn`);
-  const editSection = document.getElementById(`edit-${section}`);
-
-  // Tentatively toggle
-  const prev = { sensors: state.sensorsOptOut, cartridges: state.cartridgesOptOut, infusion: state.infusionOptOut };
-  if (section === "sensors") prev.sensors = !prev.sensors;
-  if (section === "cartridges") prev.cartridges = !prev.cartridges;
-  if (section === "infusion") prev.infusion = !prev.infusion;
-
-  // Block if all served items would be skipped
-  if (allItemsSkipped(prev.sensors, prev.cartridges, prev.infusion)) {
-    alert("Cannot skip all items, one must be selected.");
-    return;
-  }
-
-  if (section === "sensors") {
-    state.sensorsOptOut = !state.sensorsOptOut;
-    btn.classList.toggle("active", state.sensorsOptOut);
-    btn.textContent = state.sensorsOptOut ? "Skipping \u2713" : "Skip this cycle";
-    editSection.classList.toggle("skipped", state.sensorsOptOut);
-  }
-  if (section === "cartridges") {
-    state.cartridgesOptOut = !state.cartridgesOptOut;
-    btn.classList.toggle("active", state.cartridgesOptOut);
-    btn.textContent = state.cartridgesOptOut ? "Skipping \u2713" : "Skip this cycle";
-    editSection.classList.toggle("skipped", state.cartridgesOptOut);
-  }
-  if (section === "infusion") {
-    state.infusionOptOut = !state.infusionOptOut;
-    btn.classList.toggle("active", state.infusionOptOut);
-    btn.textContent = state.infusionOptOut ? "Skipping \u2713" : "Skip this cycle";
-    editSection.classList.toggle("skipped", state.infusionOptOut);
-    // Unskipping: restore qty to 3 if it was 0
-    if (!state.infusionOptOut && state.infQty1 === 0) {
-      state.infQty1 = 3;
-      document.getElementById("inf-qty-1").textContent = "3";
-      document.getElementById("prod-inf1-qty").textContent = "3";
-      document.getElementById("prod-inf1-unit").textContent = "boxes";
-      document.getElementById("prod-inf1").classList.remove("skipped");
-    }
-    if (!state.infusionOptOut && state.infQty2 === 0 && state.hasSecondSet) {
-      state.infQty2 = 3;
-      document.getElementById("inf-qty-2").textContent = "3";
-      document.getElementById("prod-inf2-qty").textContent = "3";
-      document.getElementById("prod-inf2-unit").textContent = "boxes";
-    }
-  }
-
-  updateOop();
+function updateCartridgeQtyButtons() {
+  const row = document.querySelector("#edit-cartridges .qty-row");
+  if (!row) return;
+  const btns = row.querySelectorAll(".stepper-btn");
+  if (btns[0]) btns[0].classList.toggle("at-cap", state.cartridgeQty <= 1);
+  if (btns[1]) btns[1].classList.toggle("at-cap", state.cartridgeQty >= 3);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -876,14 +776,14 @@ function getOopEstimate() {
   if ((pd.referralSource || "").toLowerCase().includes("carecentrix")) return null;
   if (pd.primaryInsurance === "Horizon BCBS") return null;
 
-  const hasCgm = pd.servingSensors && !state.sensorsOptOut;
-  const hasPump = (pd.servingSupplies && !state.cartridgesOptOut) || ((pd.servingInfusionSet1 || pd.servingInfusionSet2) && !state.infusionOptOut);
+  const hasCgm = pd.servingSensors;
+  const hasPump = pd.servingSupplies || pd.servingInfusionSet1 || pd.servingInfusionSet2;
   let serving = "";
   if (hasCgm && hasPump) serving = "CGM & Pump & Supplies";
   else if (hasCgm) serving = "CGM";
   else if (hasPump) serving = "Pump & Supplies";
 
-  const infusionSets = state.infusionOptOut ? 0 : (state.infQty1 + (state.hasSecondSet ? state.infQty2 : 0));
+  const infusionSets = state.infQty1 + (state.hasSecondSet ? state.infQty2 : 0);
 
   return estimateOop({
     primaryInsurance: pd.primaryInsurance,
@@ -984,12 +884,6 @@ function hideOverlay() {
 }
 
 async function handleSubmit() {
-  // Block submitting with all items skipped
-  if (allItemsSkipped(state.sensorsOptOut, state.cartridgesOptOut, state.infusionOptOut)) {
-    alert("Cannot skip all items, one must be selected.");
-    return;
-  }
-
   // Validate address — block if user typed anything without selecting from dropdown
   // Catches both open and closed panel states
   const addrInput = document.getElementById("address-input");
@@ -1124,38 +1018,24 @@ function buildSubmission() {
   const orderChanges = {};
 
   if (pd.servingSensors) {
-    if (state.sensorsOptOut) {
-      orderChanges.sensorsType = null;
-      orderChanges.sensorsOptOut = true;
-    } else {
-      orderChanges.sensorsType = document.getElementById("sensor-type-select")?.value || null;
-    }
+    orderChanges.sensorsType = document.getElementById("sensor-type-select")?.value || null;
   }
 
   if (pd.servingSupplies) {
-    if (state.cartridgesOptOut) {
-      orderChanges.suppliesType = null;
-      orderChanges.cartridgesOptOut = true;
-    }
+    orderChanges.cartridgeQty = state.cartridgeQty;
   }
 
   if (pd.servingInfusionSet1) {
-    if (state.infusionOptOut) {
-      orderChanges.infusionSet1 = null;
-      orderChanges.infQty1 = 0;
-      orderChanges.infusionOptOut = true;
-    } else {
-      orderChanges.infusionSet1 = getInfusionLabel(1) || null;
-      orderChanges.infusionSet1Index = getInfusionIndex(1);
-      orderChanges.infQty1 = state.infQty1;
-    }
+    orderChanges.infusionSet1 = getInfusionLabel(1) || null;
+    orderChanges.infusionSet1Index = getInfusionIndex(1);
+    orderChanges.infQty1 = state.infQty1;
   }
 
-  if (state.hasSecondSet && !state.infusionOptOut) {
+  if (state.hasSecondSet) {
     orderChanges.infusionSet2 = getInfusionLabel(2) || null;
     orderChanges.infusionSet2Index = getInfusionIndex(2);
     orderChanges.infQty2 = state.infQty2;
-  } else if (pd.servingInfusionSet2 && !state.infusionOptOut) {
+  } else if (pd.servingInfusionSet2) {
     orderChanges.infusionSet2 = getInfusionLabel(2) || pd.infusionSet2;
     orderChanges.infusionSet2Index = getInfusionIndex(2);
     orderChanges.infQty2 = state.infQty2;
@@ -1217,7 +1097,12 @@ function attachAutocomplete() {
   const input = document.getElementById("address-input");
   if (!input || !window.google?.maps?.places?.Autocomplete) return;
 
-  input.addEventListener("input", () => { state.addressSelectedFromGoogle = false; });
+  input.addEventListener("input", () => {
+    state.addressSelectedFromGoogle = false;
+    // Hide apt addon when user starts typing a new address
+    const aptAddon = document.getElementById("apt-addon");
+    if (aptAddon) aptAddon.classList.add("hidden");
+  });
 
   // When user clicks/tabs away without selecting from dropdown, show error immediately
   input.addEventListener("blur", () => {
@@ -1242,6 +1127,8 @@ function attachAutocomplete() {
     state.newAddress = input.value;
     state.addressSelectedFromGoogle = true;
     state.addressChanged = true;
+    // Store the base address (without apt) for the apartment addon
+    state._baseAddress = input.value;
     if (place.geometry?.location) {
       state.addressCoords.lat = place.geometry.location.lat();
       state.addressCoords.lng = place.geometry.location.lng();
@@ -1249,17 +1136,125 @@ function attachAutocomplete() {
     hideAddressError();
 
     // Update the display card immediately + re-check apt warning
-    const addr = input.value;
-    const fc = addr.indexOf(",");
-    if (fc > 0) {
-      document.getElementById("address-line1").textContent = addr.slice(0, fc).trim();
-      document.getElementById("address-line2").textContent = addr.slice(fc + 1).trim();
-    } else {
-      document.getElementById("address-line1").textContent = addr;
-      document.getElementById("address-line2").textContent = "";
+    updateAddressDisplay(input.value);
+    checkApartmentWarning(input.value);
+
+    // Show the apartment addon
+    const aptAddon = document.getElementById("apt-addon");
+    if (aptAddon) {
+      aptAddon.classList.remove("hidden");
+      document.getElementById("apt-input").value = "";
+      document.getElementById("apt-addon-error").classList.add("hidden");
+      // Remove any previous success message
+      const prevSuccess = aptAddon.querySelector(".apt-addon-success");
+      if (prevSuccess) prevSuccess.remove();
     }
-    checkApartmentWarning(addr);
   });
+
+  // Store autocomplete reference for apartment re-query
+  state._autocompleteInstance = autocomplete;
+}
+
+// ═══════════════════════════════════════════════════════
+// APARTMENT ADD-ON
+// ═══════════════════════════════════════════════════════
+
+function updateAddressDisplay(addr) {
+  const fc = addr.indexOf(",");
+  if (fc > 0) {
+    document.getElementById("address-line1").textContent = addr.slice(0, fc).trim();
+    document.getElementById("address-line2").textContent = addr.slice(fc + 1).trim();
+  } else {
+    document.getElementById("address-line1").textContent = addr;
+    document.getElementById("address-line2").textContent = "";
+  }
+}
+
+function addApartment() {
+  const aptInput = document.getElementById("apt-input");
+  const aptVal = aptInput?.value?.trim();
+  if (!aptVal) return;
+
+  const errEl = document.getElementById("apt-addon-error");
+  const btn = document.getElementById("apt-add-btn");
+  errEl.classList.add("hidden");
+
+  // Remove any previous success message
+  const prevSuccess = document.querySelector(".apt-addon-success");
+  if (prevSuccess) prevSuccess.remove();
+
+  const baseAddr = state._baseAddress;
+  if (!baseAddr) {
+    errEl.classList.remove("hidden");
+    return;
+  }
+
+  // Build the address with apartment inserted before the first comma
+  const fc = baseAddr.indexOf(",");
+  let addrWithApt;
+  if (fc > 0) {
+    addrWithApt = baseAddr.slice(0, fc).trim() + " Apt " + aptVal + baseAddr.slice(fc);
+  } else {
+    addrWithApt = baseAddr + " Apt " + aptVal;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i>';
+
+  // Use Google Geocoder to validate the new address
+  if (window.google?.maps?.Geocoder) {
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ address: addrWithApt }, (results, status) => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-plus"></i> ADD';
+
+      if (status === "OK" && results?.length > 0) {
+        const result = results[0];
+        const formatted = result.formatted_address.replace(/(\b\d{5})-\d{4}\b/g, "$1");
+
+        // Update state
+        const input = document.getElementById("address-input");
+        input.value = formatted;
+        state.newAddress = formatted;
+        state.addressSelectedFromGoogle = true;
+        state.addressChanged = true;
+        if (result.geometry?.location) {
+          state.addressCoords.lat = result.geometry.location.lat();
+          state.addressCoords.lng = result.geometry.location.lng();
+        }
+
+        // Update display
+        updateAddressDisplay(formatted);
+        checkApartmentWarning(formatted);
+
+        // Show success
+        const successEl = document.createElement("div");
+        successEl.className = "apt-addon-success";
+        successEl.innerHTML = '<i class="ti ti-check"></i> Address updated';
+        document.getElementById("apt-addon").appendChild(successEl);
+        setTimeout(() => successEl.remove(), 3000);
+      } else {
+        errEl.classList.remove("hidden");
+      }
+    });
+  } else {
+    // Fallback: just insert the apartment text directly
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-plus"></i> ADD';
+    const input = document.getElementById("address-input");
+    input.value = addrWithApt;
+    state.newAddress = addrWithApt;
+    state.addressSelectedFromGoogle = true;
+    state.addressChanged = true;
+    updateAddressDisplay(addrWithApt);
+    checkApartmentWarning(addrWithApt);
+
+    const successEl = document.createElement("div");
+    successEl.className = "apt-addon-success";
+    successEl.innerHTML = '<i class="ti ti-check"></i> Address updated';
+    document.getElementById("apt-addon").appendChild(successEl);
+    setTimeout(() => successEl.remove(), 3000);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
