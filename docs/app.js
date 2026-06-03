@@ -535,9 +535,30 @@ function updateProductRowsFromEdits() {
 // SKIP TOGGLES
 // ═══════════════════════════════════════════════════════
 
+function allItemsSkipped(sensorsOut, cartridgesOut, infusionOut) {
+  const pd = state.patientData;
+  if (!pd) return false;
+  const hasSensors = pd.servingSensors && !sensorsOut;
+  const hasCartridges = pd.servingSupplies && !cartridgesOut;
+  const hasInfusion = (pd.servingInfusionSet1 || pd.servingInfusionSet2) && !infusionOut;
+  return !hasSensors && !hasCartridges && !hasInfusion;
+}
+
 function toggleSkip(section) {
   const btn = document.getElementById(`${section}-skip-btn`);
   const editSection = document.getElementById(`edit-${section}`);
+
+  // Tentatively toggle
+  const prev = { sensors: state.sensorsOptOut, cartridges: state.cartridgesOptOut, infusion: state.infusionOptOut };
+  if (section === "sensors") prev.sensors = !prev.sensors;
+  if (section === "cartridges") prev.cartridges = !prev.cartridges;
+  if (section === "infusion") prev.infusion = !prev.infusion;
+
+  // Block if all served items would be skipped
+  if (allItemsSkipped(prev.sensors, prev.cartridges, prev.infusion)) {
+    alert("Cannot skip all items, one must be selected.");
+    return;
+  }
 
   if (section === "sensors") {
     state.sensorsOptOut = !state.sensorsOptOut;
@@ -934,6 +955,12 @@ function hideOverlay() {
 }
 
 async function handleSubmit() {
+  // Block submitting with all items skipped
+  if (allItemsSkipped(state.sensorsOptOut, state.cartridgesOptOut, state.infusionOptOut)) {
+    alert("Cannot skip all items, one must be selected.");
+    return;
+  }
+
   // Validate address if user opened the address panel and typed something
   const addrPanel = document.getElementById("panel-addr");
   const addrInput = document.getElementById("address-input");
