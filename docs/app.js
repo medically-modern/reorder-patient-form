@@ -812,6 +812,12 @@ function updateOop() {
   if (!est || !est.ok || !est.canCalculateCosts) { card.style.display = "none"; return; }
   card.style.display = "";
   document.getElementById("oop-total").textContent = fmt(est.patientOwes || 0);
+
+  // Supply duration: Medicaid = 60 day, everything else = 90 day
+  const ins = (state.patientData.primaryInsurance || "").toLowerCase();
+  const isMedicaid = ins.includes("medicaid");
+  const durEl = document.getElementById("supply-duration");
+  if (durEl) durEl.textContent = isMedicaid ? "60 day supply" : "90 day supply";
 }
 
 function getOopEstimate() {

@@ -284,6 +284,7 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
 .oop-amount{font-family:'IBM Plex Mono',monospace;font-size:1.45rem;font-weight:600;color:var(--text);letter-spacing:.01em;line-height:1}
 .oop-label{font-family:'IBM Plex Mono',monospace;font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--text-muted);margin-top:8px}
 .oop-note{font-size:.8rem;color:var(--text-muted);margin-top:10px;font-style:italic}
+.supply-duration{font-family:'IBM Plex Mono',monospace;font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#2e7d32;margin-bottom:10px}
 
 /* ─── CTA ─── */
 .cta-btn{
