@@ -445,9 +445,17 @@ function togglePanel(id, btn) {
   const isOpen = panel.classList.toggle("open");
   btn.textContent = isOpen ? 'Done' : 'Edit';
 
-  // When closing address panel, mark as changed if user entered something
+  // When closing address panel, validate and mark as changed
   if (id === "addr" && !isOpen) {
     const input = document.getElementById("address-input");
+    if (input.value.trim() && !state.addressSelectedFromGoogle) {
+      // Block close — user typed but didn't pick from dropdown
+      panel.classList.add("open");
+      btn.textContent = "Done";
+      showAddressError();
+      return;
+    }
+    hideAddressError();
     if (input.value.trim() && state.addressSelectedFromGoogle) {
       state.addressChanged = true;
       state.newAddress = input.value.trim();
@@ -982,29 +990,18 @@ async function handleSubmit() {
     return;
   }
 
-  // Validate address if user opened the address panel and typed something
-  const addrPanel = document.getElementById("panel-addr");
+  // Validate address — block if user typed anything without selecting from dropdown
+  // Catches both open and closed panel states
   const addrInput = document.getElementById("address-input");
-  if (addrPanel.classList.contains("open") && addrInput.value.trim() && !state.addressSelectedFromGoogle) {
-    // Show big red error
-    let errEl = document.getElementById("address-error-big");
-    if (!errEl) {
-      errEl = document.createElement("div");
-      errEl.id = "address-error-big";
-      errEl.className = "address-error-big";
-      errEl.innerHTML = '<i class="ti ti-alert-circle"></i><span>You must select an address from the dropdown suggestions. Please type your address and pick one from the list.</span>';
-      addrPanel.appendChild(errEl);
+  if (addrInput.value.trim() && !state.addressSelectedFromGoogle) {
+    // Open the panel so the error is visible
+    const addrPanel = document.getElementById("panel-addr");
+    if (!addrPanel.classList.contains("open")) {
+      addrPanel.classList.add("open");
+      const addrBtn = addrPanel.closest(".card").querySelector(".card-edit");
+      if (addrBtn) addrBtn.textContent = "Done";
     }
-    errEl.classList.remove("hidden");
-
-    // Shake the card
-    const addrCard = addrPanel.closest(".card");
-    addrCard.classList.remove("shake");
-    addrCard.offsetHeight; // force reflow
-    addrCard.classList.add("shake");
-
-    // Scroll to it
-    addrCard.scrollIntoView({ behavior: "smooth", block: "center" });
+    showAddressError();
     return;
   }
 
@@ -1239,10 +1236,7 @@ function attachAutocomplete() {
       state.addressCoords.lat = place.geometry.location.lat();
       state.addressCoords.lng = place.geometry.location.lng();
     }
-    document.getElementById("address-error").classList.add("hidden");
-    // Hide the big red error if it was showing
-    const bigErr = document.getElementById("address-error-big");
-    if (bigErr) bigErr.classList.add("hidden");
+    hideAddressError();
 
     // Update the display card immediately + re-check apt warning
     const addr = input.value;
@@ -1261,6 +1255,31 @@ function attachAutocomplete() {
 // ═══════════════════════════════════════════════════════
 // UTILITIES
 // ═══════════════════════════════════════════════════════
+
+function showAddressError() {
+  const panel = document.getElementById("panel-addr");
+  const card = panel.closest(".card");
+
+  // Show inline error
+  const errEl = document.getElementById("address-error");
+  if (errEl) {
+    errEl.textContent = "Please select an address from the dropdown suggestions.";
+    errEl.classList.remove("hidden");
+  }
+
+  // Shake the card
+  card.classList.remove("shake");
+  card.offsetHeight;
+  card.classList.add("shake");
+
+  // Scroll to it
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function hideAddressError() {
+  const errEl = document.getElementById("address-error");
+  if (errEl) errEl.classList.add("hidden");
+}
 
 function showError(msg) {
   document.getElementById("loading-screen").style.display = "none";
