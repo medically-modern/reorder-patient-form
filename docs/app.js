@@ -702,6 +702,23 @@ function removeSecondSet() {
 
 function selectPostpone(weeks) {
   const pd = state.patientData;
+
+  // Deselect if already selected — restore original date
+  if (state._selectedPostpone === weeks) {
+    state._selectedPostpone = null;
+    state.delayDate = null;
+    state.delayLessThan20Days = false;
+    document.querySelectorAll(".postpone-btn").forEach(btn => btn.classList.remove("selected"));
+    document.getElementById("postpone-confirm").classList.add("hidden");
+    // Restore original date display
+    const orig = pd.nextOrder ? new Date(pd.nextOrder + "T00:00:00") : new Date();
+    const origDisplay = orig.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const origDay = orig.toLocaleDateString("en-US", { weekday: "long" });
+    document.getElementById("order-date-display").textContent = `${origDisplay} · ${origDay}`;
+    return;
+  }
+
+  state._selectedPostpone = weeks;
   const baseDate = pd.nextOrder ? new Date(pd.nextOrder + "T00:00:00") : new Date();
   const newDate = new Date(baseDate);
   newDate.setDate(newDate.getDate() + weeks * 7);
