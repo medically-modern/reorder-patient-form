@@ -1219,6 +1219,16 @@ function attachAutocomplete() {
 
   input.addEventListener("input", () => { state.addressSelectedFromGoogle = false; });
 
+  // When user clicks/tabs away without selecting from dropdown, show error immediately
+  input.addEventListener("blur", () => {
+    // Short delay — Google autocomplete click fires blur before place_changed
+    setTimeout(() => {
+      if (input.value.trim() && !state.addressSelectedFromGoogle) {
+        showAddressError();
+      }
+    }, 300);
+  });
+
   const autocomplete = new google.maps.places.Autocomplete(input, {
     componentRestrictions: { country: "us" },
     types: ["address"],
