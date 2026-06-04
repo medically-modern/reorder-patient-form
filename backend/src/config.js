@@ -67,6 +67,7 @@ const COLUMNS = {
   REORDER_LINK:               "text_mm3khve4",       // Text — reorder confirmation link
   INSURANCE_CARD:             "file_mm3knk5q",       // File — uploaded insurance card images
   REORDER_TEXT_SENT:          "text_mm3rzqks",       // Text — timestamp when reorder SMS was sent (cron dedup)
+  OOP_ESTIMATE:               "text_mm404p7d",       // Text — OOP estimate written on link creation
 
   // Existing file columns
   CLINICALS_FILES:  "file_mkp0vm0a",                 // MN Docs / Clinicals files

@@ -6,6 +6,7 @@ const {
 } = require("./config");
 const { enqueueWriteAndWait, startWorker, startReorderWorker, startSmsWorker, startSmsVerifyWorker } = require("./queue");
 const { notifyMondayError } = require("./notify");
+const { estimateOop } = require("./oopEstimator");
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
 const API_URL = "https://api.monday.com/v2";
@@ -743,11 +744,60 @@ async function storeTokenInMonday(uid, token, link) {
   if (!item) throw new Error("Patient not found");
   const itemId = validateNumericId(item.id, "item ID");
 
-  await Promise.all([
+  const col = (id) => {
+    const c = item.column_values.find((cv) => cv.id === id);
+    return c?.text || "";
+  };
+
+  // Calculate OOP estimate using the same logic as the frontend
+  const writes = [
     writeText(itemId, COLUMNS.REORDER_TOKEN, token),
     writeText(itemId, COLUMNS.REORDER_LINK, link),
-  ]);
+  ];
 
+  try {
+    const subscription = col(COLUMNS.SUBSCRIPTION);
+    const primaryIns = col(COLUMNS.PRIMARY_INS);
+
+    const isServing = (val) => val && val !== "Not Serving" && val.trim() !== "";
+    const hasCgm = isServing(col(COLUMNS.SENSORS_TYPE));
+    const hasPump = isServing(col(COLUMNS.SUPPLIES_TYPE)) || isServing(col(COLUMNS.INFUSION_SET_1));
+    let serving = "";
+    if (hasCgm && hasPump) serving = "CGM & Pump & Supplies";
+    else if (hasCgm) serving = "CGM";
+    else if (hasPump) serving = "Pump & Supplies";
+
+    const infQty1 = parseInt(col(COLUMNS.INF_QTY_1), 10) || 0;
+    const infQty2 = parseInt(col(COLUMNS.INF_QTY_2), 10) || 0;
+    const infusionSets = (infQty1 + infQty2) || 3;
+
+    const est = estimateOop({
+      primaryInsurance: primaryIns,
+      secondaryInsurance: col(COLUMNS.SECONDARY_INS) || "",
+      serving,
+      infusionSets,
+      deductibleRemaining: col(COLUMNS.DEDUCTIBLE_REMAINING) || "",
+      stediCoinsurance: col(COLUMNS.STEDI_COINSURANCE) || "",
+      oopMaxRemaining: col(COLUMNS.OOP_MAX_REMAINING) || "",
+    });
+
+    let oopText;
+    if (est.ok && est.canCalculateCosts) {
+      oopText = `$${est.patientOwes.toFixed(2)}`;
+    } else if (est.ok && est.medicaidCovers) {
+      oopText = "$0.00";
+    } else {
+      oopText = est.ok ? "Incomplete benefits data" : (est.reason || "N/A");
+    }
+
+    writes.push(writeText(itemId, COLUMNS.OOP_ESTIMATE, oopText));
+    console.log(`[monday] OOP estimate for UID ${uid}: ${oopText}`);
+  } catch (err) {
+    console.warn(`[monday] OOP estimate failed for UID ${uid}: ${err.message}`);
+    writes.push(writeText(itemId, COLUMNS.OOP_ESTIMATE, "Error: " + err.message));
+  }
+
+  await Promise.all(writes);
   console.log(`[monday] Reorder token stored for UID ${uid}`);
 }
 
