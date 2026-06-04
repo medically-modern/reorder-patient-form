@@ -104,7 +104,7 @@ const COINSURANCE_OVERRIDES = {
 // ─── Humana split coinsurance ───────────────────────────────────────────────
 // CGM products (monitor + sensors) = 0% coinsurance
 // Pump and supply products = real Stedi coinsurance
-const HUMANA_CGM_PRODUCTS = new Set(["CGM Monitor", "CGM Sensors"]);
+const HUMANA_CGM_PRODUCTS = new Set(["CGM Sensors"]);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -195,17 +195,10 @@ function estimateOop(inputs) {
   // Build line items
   const lines = [];
 
-  // --- CGM: Monitor (1 unit E2103) + Sensors (3 units A4239) ---
+  // --- CGM: Sensors only (3 units A4239) ---
+  // Monitor (E2103) and Pump (E0784) excluded — this is a reorder form,
+  // patients already have the hardware. Only consumables are estimated.
   if (hasCgm) {
-    if (rates.monitor_rate !== null) {
-      lines.push({
-        product: "CGM Monitor",
-        hcpc: "E2103",
-        units: 1,
-        rate: rates.monitor_rate,
-        allowed: round2(1 * rates.monitor_rate),
-      });
-    }
     if (rates.sensor_rate !== null) {
       lines.push({
         product: "CGM Sensors",
@@ -215,17 +208,6 @@ function estimateOop(inputs) {
         allowed: round2(3 * rates.sensor_rate),
       });
     }
-  }
-
-  // --- Pump: 1 unit E0784 ---
-  if (hasPump && rates.pump_rate !== null) {
-    lines.push({
-      product: "Insulin Pump",
-      hcpc: "E0784",
-      units: 1,
-      rate: rates.pump_rate,
-      allowed: round2(1 * rates.pump_rate),
-    });
   }
 
   // --- Supplies: infusion sets + cartridges ---
