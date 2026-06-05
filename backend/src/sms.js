@@ -202,6 +202,15 @@ async function sendSMS(toNumber, messageText, opts = {}) {
  * @param {string|null} [opts.infusionSet2] - Infusion set 2 if serving
  */
 function buildReorderText(accountName, nextOrderDate, reorderLink, opts = {}) {
+  // Format date for display (e.g. "2026-06-30" → "June 30, 2026")
+  let dateDisplay = nextOrderDate || "TBD";
+  if (nextOrderDate && nextOrderDate !== "TBD") {
+    const d = new Date(nextOrderDate + "T00:00:00");
+    if (!isNaN(d)) {
+      dateDisplay = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    }
+  }
+
   const items = [];
   if (opts.sensorsType) items.push(opts.sensorsType);
   if (opts.suppliesType) items.push(opts.suppliesType + " cartridges");
@@ -210,7 +219,7 @@ function buildReorderText(accountName, nextOrderDate, reorderLink, opts = {}) {
 
   const lines = [
     `Hi, Medically Modern here!`,
-    `It's time for your next order:`,
+    `It's time for your next order, scheduled for ${dateDisplay}:`,
   ];
 
   if (items.length > 0) {
