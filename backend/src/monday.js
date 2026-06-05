@@ -437,8 +437,8 @@ async function processReorderSubmission(uid, submission) {
       }
     }
 
-    // Cartridge Qty — user-selected (1–3)
-    {
+    // Cartridge Qty — user-selected (1–3), only if patient has supplies
+    if (oc.cartridgeQty !== undefined && oc.cartridgeQty !== null) {
       const cartQty = parseInt(oc.cartridgeQty, 10);
       const qty = (!isNaN(cartQty) && cartQty >= 1 && cartQty <= 3) ? cartQty : 3;
       const currentVal = col(COLUMNS.CARTRIDGE_QTY);
