@@ -441,7 +441,7 @@ app.post("/api/submit", apiLimiter, requireAuth, upload.array("cards", 2), async
         confirm: "Thank you! Your order has been confirmed. We'll begin processing it shortly. Please reach out if anything changes.",
         delay: submission.indefinite
           ? "Thank you! Your order has been paused. When you're ready to resume, please text or call us to set a new order date."
-          : "Thank you! Your order has been successfully delayed. We'll reach out again before your new order date.",
+          : "Thank you! Your order has been successfully postponed to the new date. Please reach out if anything changes.",
         cancel: "We're sad to see you go! We'll cancel all ongoing reorders. Please text/call us if this was a mistake.",
       };
 

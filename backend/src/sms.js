@@ -248,7 +248,7 @@ function buildConfirmationText(opts) {
   // Items
   const items = [];
   if (opts.sensorsType) items.push(`CGM: ${opts.sensorsType}`);
-  if (opts.suppliesType) items.push(`Pump Supplies: ${opts.suppliesType}`);
+  if (opts.suppliesType) items.push(`Pump Cartridges: ${opts.suppliesType}`);
   if (opts.infusionSet1) {
     const qty1 = opts.infQty1 ? ` (x${opts.infQty1})` : "";
     items.push(`Infusion Set 1: ${opts.infusionSet1}${qty1}`);

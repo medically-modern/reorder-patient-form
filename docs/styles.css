@@ -346,7 +346,10 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
   padding:12px 8px;border-radius:var(--radius-sm);border:1.5px solid var(--border);
   background:var(--bg);color:var(--text);cursor:pointer;transition:all .15s;
   -webkit-tap-highlight-color:transparent;
+  -webkit-appearance:none;outline:none;
 }
+.postpone-btn:focus{outline:none}
+.postpone-btn:focus:not(:focus-visible){outline:none;box-shadow:none}
 .postpone-btn:hover{border-color:var(--amber);color:var(--amber)}
 .postpone-btn:active{transform:scale(.97)}
 .postpone-btn.selected{
@@ -453,6 +456,17 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
   background: #5a8a7a;
   color: white;
 }
+
+/* ─── Insurance clear button ─── */
+.ins-clear-btn{
+  display:inline-flex;align-items:center;gap:4px;
+  background:none;border:none;color:var(--text-muted);
+  font-family:'Poppins',sans-serif;font-size:.78rem;font-weight:500;
+  cursor:pointer;padding:4px 0;margin-top:12px;
+  transition:color .15s;
+}
+.ins-clear-btn:hover{color:var(--danger)}
+.ins-clear-btn i{font-size:14px}
 
 /* ─── Insurance warning card ─── */
 .insurance-warning-card{text-align:center;padding:24px 20px}

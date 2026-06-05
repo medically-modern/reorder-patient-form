@@ -356,9 +356,28 @@ function populateSizeDropdown(setNum, brand, selectValue) {
 function populateTubingDropdown(setNum, brand, size, selectValue) {
   const tubingSelect = document.getElementById(`inf-tubing-${setNum}`);
   const map = getMapForSet(setNum);
-  const tubings = Object.keys((map[brand] || {})[size] || {});
+  let tubings = Object.keys((map[brand] || {})[size] || {});
+  // Block 5" tubing for t:slim — not compatible
+  const pumpType = (state.patientData?.suppliesType || "").toLowerCase();
+  if (pumpType.includes("t:slim")) {
+    tubings = tubings.filter(t => !t.includes('5"'));
+  }
   tubingSelect.innerHTML = tubings.map(t => `<option value="${escAttr(t)}">${escHtml(t)}</option>`).join("");
   if (selectValue && tubings.includes(selectValue)) tubingSelect.value = selectValue;
+}
+
+function handleSensorTypeChange() {
+  const warning = document.getElementById("sensor-compat-warning");
+  if (!warning) return;
+  const pd = state.patientData;
+  const currentVal = document.getElementById("sensor-type-select")?.value || "";
+  const changed = currentVal.toLowerCase() !== (pd.sensorsType || "").toLowerCase();
+  const hasPump = pd.servingSupplies || pd.servingInfusionSet1;
+  if (changed && hasPump) {
+    warning.classList.remove("hidden");
+  } else {
+    warning.classList.add("hidden");
+  }
 }
 
 function handleInfBrandChange(setNum) {
@@ -620,7 +639,7 @@ function selectPostpone(weeks) {
     state._selectedPostpone = null;
     state.delayDate = null;
     state.delayLessThan20Days = false;
-    document.querySelectorAll(".postpone-btn").forEach(btn => btn.classList.remove("selected"));
+    document.querySelectorAll(".postpone-btn").forEach(btn => { btn.classList.remove("selected"); btn.blur(); });
     document.getElementById("postpone-confirm").classList.add("hidden");
     // Restore original date display
     const orig = pd.nextOrder ? new Date(pd.nextOrder + "T00:00:00") : new Date();
@@ -642,9 +661,10 @@ function selectPostpone(weeks) {
   const diffDays = Math.ceil((newDate - today) / (1000 * 60 * 60 * 24));
   state.delayLessThan20Days = diffDays < 20;
 
-  // Highlight selected button
+  // Highlight selected button + blur all to clear iOS focus haze
   document.querySelectorAll(".postpone-btn").forEach((btn, i) => {
     btn.classList.toggle("selected", i + 1 === weeks);
+    btn.blur();
   });
 
   // Show confirmation box
@@ -666,6 +686,31 @@ function handleNewInsuranceType() {
   const otherGroup = document.getElementById("other-insurance-group");
   if (val === "Other") otherGroup.classList.remove("hidden");
   else otherGroup.classList.add("hidden");
+  updateInsClearBtn();
+}
+
+function updateInsClearBtn() {
+  const btn = document.getElementById("ins-clear-btn");
+  if (!btn) return;
+  const hasType = document.getElementById("new-insurance-type").value !== "";
+  const hasMember = document.getElementById("new-member-id").value.trim() !== "";
+  const hasFiles = state.uploadedFiles.length > 0;
+  if (hasType || hasMember || hasFiles) {
+    btn.classList.remove("hidden");
+  } else {
+    btn.classList.add("hidden");
+  }
+}
+
+function clearInsuranceEdits() {
+  document.getElementById("new-insurance-type").value = "";
+  document.getElementById("new-member-id").value = "";
+  document.getElementById("other-insurance-name").value = "";
+  document.getElementById("other-insurance-group").classList.add("hidden");
+  state.uploadedFiles = [];
+  state.insuranceChanged = false;
+  document.getElementById("upload-preview").innerHTML = "";
+  document.getElementById("ins-clear-btn").classList.add("hidden");
 }
 
 // ═══════════════════════════════════════════════════════

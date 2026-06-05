@@ -141,7 +141,11 @@
             <div class="edit-section-head">
               <label class="field-label">CGM Sensor</label>
             </div>
-            <select id="sensor-type-select" class="form-select"></select>
+            <select id="sensor-type-select" class="form-select" onchange="handleSensorTypeChange()"></select>
+            <div class="alert alert--warn hidden" id="sensor-compat-warning" style="margin-top:10px">
+              <i class="ti ti-alert-triangle"></i>
+              <span>Make sure the new sensor is compatible with your insulin pump.</span>
+            </div>
           </div>
 
           <!-- Infusion Set 1 -->
@@ -291,7 +295,7 @@
           </div>
 
           <label class="field-label" for="new-member-id">New member ID</label>
-          <input type="text" id="new-member-id" class="form-input" placeholder="Enter your new member ID" inputmode="text">
+          <input type="text" id="new-member-id" class="form-input" placeholder="Enter your new member ID" inputmode="text" oninput="updateInsClearBtn()">
 
           <div class="upload-section">
             <label class="field-label">Insurance card <span class="optional-tag">optional</span></label>
@@ -303,6 +307,8 @@
             </div>
             <div class="upload-previews" id="upload-preview"></div>
           </div>
+
+          <button class="ins-clear-btn hidden" id="ins-clear-btn" onclick="clearInsuranceEdits()"><i class="ti ti-x"></i> Clear changes</button>
         </div>
       </section>
 
