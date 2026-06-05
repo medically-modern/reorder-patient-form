@@ -350,7 +350,6 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
 }
 .postpone-btn:focus{outline:none}
 .postpone-btn:focus:not(:focus-visible){outline:none;box-shadow:none}
-.postpone-btn:hover{border-color:var(--amber);color:var(--amber)}
 .postpone-btn:active{transform:scale(.97)}
 .postpone-btn.selected{
   border-color:var(--amber);background:var(--amber-bg);color:#92610A;
