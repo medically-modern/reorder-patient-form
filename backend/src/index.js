@@ -442,14 +442,9 @@ app.post("/api/submit", apiLimiter, requireAuth, upload.array("cards", 2), async
         delay: submission.indefinite
           ? "Thank you! Your order has been paused. When you're ready to resume, please text or call us to set a new order date."
           : "Thank you! Your order has been successfully postponed to the new date. Please reach out if anything changes.",
-        cancel: "We're sad to see you go! We'll cancel all ongoing reorders. Please text/call us if this was a mistake.",
       };
 
-      // For delay < 20 days, use confirm message
-      let message = messages[submission.response];
-      if (submission.response === "delay" && submission.delayLessThan20Days) {
-        message = messages.confirm;
-      }
+      let message = messages[submission.response] || messages.confirm;
 
       // Invalidate the reorder token so the link can't be reused after successful submission
       if (req.reorderToken) {
