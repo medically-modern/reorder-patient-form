@@ -195,17 +195,35 @@ async function sendSMS(toNumber, messageText, opts = {}) {
  * @param {string} accountName - Patient's name from Monday
  * @param {string} nextOrderDate - Next order date string
  * @param {string} reorderLink - The reorder confirmation link
+ * @param {Object} [opts] - Optional order details from getPatientOrderDetails
+ * @param {string|null} [opts.sensorsType] - CGM type if serving
+ * @param {string|null} [opts.suppliesType] - Pump type if serving
+ * @param {string|null} [opts.infusionSet1] - Infusion set 1 if serving
+ * @param {string|null} [opts.infusionSet2] - Infusion set 2 if serving
  */
-function buildReorderText(accountName, nextOrderDate, reorderLink) {
-  return [
-    `Hey ${accountName}, good news - we are preparing your re-order!`,
-    `The scheduled shipment date is ${nextOrderDate}.`,
-    `Can you please confirm your order in the link below.`,
-    ``,
-    `Thanks!`,
-    `Medically Modern`,
-    reorderLink,
-  ].join(" \n");
+function buildReorderText(accountName, nextOrderDate, reorderLink, opts = {}) {
+  const items = [];
+  if (opts.sensorsType) items.push(opts.sensorsType);
+  if (opts.suppliesType) items.push(opts.suppliesType + " cartridges");
+  if (opts.infusionSet1) items.push(opts.infusionSet1);
+  if (opts.infusionSet2) items.push(opts.infusionSet2);
+
+  const lines = [
+    `Hi, Medically Modern here!`,
+    `It's time for your next order:`,
+  ];
+
+  if (items.length > 0) {
+    for (const item of items) {
+      lines.push(`- ${item}`);
+    }
+  }
+
+  lines.push(``);
+  lines.push(`Confirm and schedule your delivery here:`);
+  lines.push(reorderLink);
+
+  return lines.join(" \n");
 }
 
 /**

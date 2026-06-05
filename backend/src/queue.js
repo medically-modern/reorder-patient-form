@@ -120,7 +120,7 @@ let _reorderWorker = null;
 
 function startReorderWorker() {
   const { generateReorderToken } = require("./auth");
-  const { storeTokenInMonday, markReorderTextSent } = require("./monday");
+  const { storeTokenInMonday, markReorderTextSent, getPatientOrderDetails } = require("./monday");
   const { sendSMS, buildReorderText } = require("./sms");
   const { enqueueSmsBatchVerification } = require("./queue");
   const { notifyCronError, notifyCronSummary } = require("./notify");
@@ -142,11 +142,19 @@ function startReorderWorker() {
       // 2. Store in Monday
       await storeTokenInMonday(uid, token, link);
 
-      // 3. Send SMS
-      const messageText = buildReorderText(name, nextOrder || "TBD", link);
+      // 3. Fetch product details for SMS template
+      const details = await getPatientOrderDetails(uid);
+
+      // 4. Send SMS
+      const messageText = buildReorderText(name, nextOrder || "TBD", link, {
+        sensorsType: details?.sensorsType || null,
+        suppliesType: details?.suppliesType || null,
+        infusionSet1: details?.infusionSet1 || null,
+        infusionSet2: details?.infusionSet2 || null,
+      });
       const smsResult = await sendSMS(phone, messageText, { patientName: name });
 
-      // 4. Mark as sent in Monday
+      // 5. Mark as sent in Monday
       const sentTimestamp = new Date().toLocaleString("en-US", {
         timeZone: "America/New_York",
         month: "short", day: "numeric", year: "numeric",
@@ -154,7 +162,7 @@ function startReorderWorker() {
       }) + " ET";
       await markReorderTextSent(itemId, sentTimestamp);
 
-      // 5. Store result for batch verification
+      // 6. Store result for batch verification
       const result = {
         uid,
         name,
