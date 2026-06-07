@@ -125,10 +125,10 @@ async function releaseCronLock(instanceId) {
   }
 }
 
-// ─── Schedule: runs once daily at 1:30 PM ET ───
+// ─── Schedule: runs once daily at 2:00 PM ET ───
 
 function startCron() {
-  const schedule = "30 13 * * *";
+  const schedule = "0 14 * * *";
 
   const task = cron.schedule(schedule, async () => {
     // Leader election — only one replica runs the cron
@@ -147,7 +147,7 @@ function startCron() {
     timezone: "America/New_York",
   });
 
-  console.log(`[cron] Reorder scheduler started — runs daily at 1:30 PM ET (replica-safe)`);
+  console.log(`[cron] Reorder scheduler started — runs daily at 2:00 PM ET (replica-safe)`);
 
   return task;
 }
