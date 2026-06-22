@@ -194,6 +194,22 @@ async function findPatientByUid(uid) {
   return data.items_page_by_column_values?.items?.[0] || null;
 }
 
+// ─── Find patient by Monday row id ───
+// The reorder flow routes writes by itemId (the exact order row), not UID,
+// because a patient can have multiple rows sharing one UID.
+async function getPatientItemById(itemId) {
+  const safeId = validateNumericId(itemId, "item ID");
+
+  const data = await mondayQuery(`{
+    items(ids: [${safeId}]) {
+      id name group { id title }
+      column_values { id type text value }
+    }
+  }`);
+
+  return data.items?.[0] || null;
+}
+
 // ─── Find patient by phone ───
 
 async function findPatientByPhone(phone) {
@@ -238,8 +254,8 @@ async function findPatientByPhone(phone) {
 
 // ─── Get full patient data for reorder form ───
 
-async function getPatientData(uid) {
-  const item = await findPatientByUid(uid);
+async function getPatientData(itemId) {
+  const item = await getPatientItemById(itemId);
   if (!item) return null;
 
   const col = (id) => {
@@ -330,8 +346,8 @@ async function getPatientData(uid) {
  *   - insuranceCardUrls: string[] | null
  * @returns {Promise<{success: boolean, message: string, failures: string[]}>}
  */
-async function processReorderSubmission(uid, submission) {
-  const item = await findPatientByUid(uid);
+async function processReorderSubmission(itemIdArg, submission) {
+  const item = await getPatientItemById(itemIdArg);
   if (!item) throw new Error("Patient not found");
   const itemId = validateNumericId(item.id, "item ID");
 
@@ -610,12 +626,12 @@ async function processReorderSubmission(uid, submission) {
   const saved = tasks.length - results.filter(Boolean).length;
 
   if (failures.length > 0) {
-    console.error(`[monday] Partial submission for UID ${uid}: ${saved}/${tasks.length} saved, failures:`, failures);
-    await notifyMondayError(`Partial write: ${saved}/${tasks.length} saved\nFailures:\n${failures.join("\n")}`, uid);
+    console.error(`[monday] Partial submission for item ${itemId}: ${saved}/${tasks.length} saved, failures:`, failures);
+    await notifyMondayError(`Partial write: ${saved}/${tasks.length} saved\nFailures:\n${failures.join("\n")}`, String(itemId));
     return { success: false, partial: true, saved, failures };
   }
 
-  console.log(`[monday] Reorder submission complete for UID ${uid}: all ${saved} writes succeeded`);
+  console.log(`[monday] Reorder submission complete for item ${itemId}: all ${saved} writes succeeded`);
   return { success: true, saved, failures: [] };
 }
 
@@ -702,14 +718,14 @@ async function lookupTokenInMonday(token) {
   const uid = item.column_values?.find(c => c.id === COLUMNS.PATIENT_UID)?.text;
   if (!uid) return null;
 
-  console.log(`[monday] Token found in Monday for UID ${uid} (fallback from Redis miss)`);
-  return uid;
+  console.log(`[monday] Token found in Monday for UID ${uid} (item ${item.id}, fallback from Redis miss)`);
+  return { uid, itemId: String(item.id) };
 }
 
 // ─── Generate & store reorder token in Monday ───
 
-async function writeHelpMessage(uid, helpMessage, helpChip) {
-  const item = await findPatientByUid(uid);
+async function writeHelpMessage(itemIdArg, helpMessage, helpChip) {
+  const item = await getPatientItemById(itemIdArg);
   if (!item) throw new Error("Patient not found");
   const itemId = validateNumericId(item.id, "item ID");
 
@@ -736,11 +752,11 @@ async function writeHelpMessage(uid, helpMessage, helpChip) {
     : newEntry;
 
   await writeLongText(itemId, COLUMNS.PATIENT_HELP_MSG, helpText);
-  console.log(`[monday] Help message appended for UID ${uid} at ${timestamp}`);
+  console.log(`[monday] Help message appended for item ${itemId} at ${timestamp}`);
 }
 
-async function storeTokenInMonday(uid, token, link) {
-  const item = await findPatientByUid(uid);
+async function storeTokenInMonday(itemIdArg, token, link) {
+  const item = await getPatientItemById(itemIdArg);
   if (!item) throw new Error("Patient not found");
   const itemId = validateNumericId(item.id, "item ID");
 
@@ -791,14 +807,14 @@ async function storeTokenInMonday(uid, token, link) {
     }
 
     writes.push(writeText(itemId, COLUMNS.OOP_ESTIMATE, oopText));
-    console.log(`[monday] OOP estimate for UID ${uid}: ${oopText}`);
+    console.log(`[monday] OOP estimate for item ${itemId}: ${oopText}`);
   } catch (err) {
-    console.warn(`[monday] OOP estimate failed for UID ${uid}: ${err.message}`);
+    console.warn(`[monday] OOP estimate failed for item ${itemId}: ${err.message}`);
     writes.push(writeText(itemId, COLUMNS.OOP_ESTIMATE, "Error: " + err.message));
   }
 
   await Promise.all(writes);
-  console.log(`[monday] Reorder token stored for UID ${uid}`);
+  console.log(`[monday] Reorder token stored for item ${itemId}`);
 }
 
 // ─── Query patients where Days to Order = "20 days out" ───
@@ -895,8 +911,8 @@ async function markReorderTextSent(itemId, timestamp) {
 
 // ─── Read patient data fresh from Monday (for confirmation text) ───
 
-async function getPatientOrderDetails(uid) {
-  const item = await findPatientByUid(uid);
+async function getPatientOrderDetails(itemId) {
+  const item = await getPatientItemById(itemId);
   if (!item) return null;
 
   const col = (id) => {
@@ -957,6 +973,7 @@ module.exports = {
   mondayQuery,
   findPatientByPhone,
   findPatientByUid,
+  getPatientItemById,
   getPatientData,
   getPatientOrderDetails,
   processReorderSubmission,

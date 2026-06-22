@@ -27,10 +27,10 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 // ─── Generate a reorder token for a patient ───
 
-async function generateReorderToken(uid) {
+async function generateReorderToken(uid, itemId) {
   const token = crypto.randomBytes(AUTH.TOKEN_BYTES).toString("hex");
-  await storeReorderToken(token, uid, AUTH.TOKEN_TTL);
-  console.log(`[auth] Reorder token generated for UID ${uid}`);
+  await storeReorderToken(token, uid, itemId, AUTH.TOKEN_TTL);
+  console.log(`[auth] Reorder token generated for UID ${uid} (item ${itemId})`);
   return token;
 }
 
@@ -48,20 +48,40 @@ async function verifyReorderToken(token) {
     return { error: "Too many attempts. Please try again later.", status: 429 };
   }
 
-  // Lookup token in Redis first, fall back to Monday if Redis missed (restart/flush)
-  let uid = await getReorderToken(token);
+  // Lookup token in Redis first, fall back to Monday if Redis missed (restart/flush).
+  // The token is unique per Monday row, so it is the reliable way to resolve the
+  // exact order (itemId) — not the UID, which can be shared across rows.
+  let rec = await getReorderToken(token);
+  let uid = rec?.uid || null;
+  let itemId = rec?.itemId || null;
+
   if (!uid) {
     try {
-      uid = await lookupTokenInMonday(token);
-      if (uid) {
+      const found = await lookupTokenInMonday(token);
+      if (found) {
+        uid = found.uid;
+        itemId = found.itemId;
         // Re-seed Redis so subsequent requests are fast
-        await storeReorderToken(token, uid, AUTH.TOKEN_TTL);
-        console.log(`[auth] Token re-seeded in Redis from Monday fallback for UID ${uid}`);
+        await storeReorderToken(token, uid, itemId, AUTH.TOKEN_TTL);
+        console.log(`[auth] Token re-seeded in Redis from Monday fallback for UID ${uid} (item ${itemId})`);
       }
     } catch (err) {
       console.error(`[auth] Monday fallback lookup failed:`, err.message);
     }
+  } else if (!itemId) {
+    // Legacy token issued before itemId routing — recover the exact row by token
+    try {
+      const found = await lookupTokenInMonday(token);
+      if (found?.itemId) {
+        itemId = found.itemId;
+        await storeReorderToken(token, uid, itemId, AUTH.TOKEN_TTL);
+        console.log(`[auth] Recovered itemId ${itemId} for legacy token (UID ${uid})`);
+      }
+    } catch (err) {
+      console.warn(`[auth] Legacy itemId recovery failed:`, err.message);
+    }
   }
+
   if (!uid) {
     return { error: "This link has expired or already been used. Please contact us for a new one.", status: 401 };
   }
@@ -71,17 +91,18 @@ async function verifyReorderToken(token) {
   // Generate JWT
   const jti = crypto.randomUUID();
   const jwtToken = jwt.sign(
-    { uid, jti, purpose: "reorder", reorderToken: token },
+    { uid, itemId, jti, purpose: "reorder", reorderToken: token },
     JWT_SECRET,
     { expiresIn: AUTH.JWT_EXPIRY, issuer: "mm-reorder-form" }
   );
 
-  console.log(`[auth] Reorder session created for UID ${uid} (jti: ${jti})`);
+  console.log(`[auth] Reorder session created for UID ${uid} (item ${itemId}, jti: ${jti})`);
 
   return {
     success: true,
     jwt: jwtToken,
     uid,
+    itemId,
     expiresIn: AUTH.JWT_EXPIRY,
   };
 }
@@ -104,13 +125,24 @@ function requireAuth(req, res, next) {
   try {
     const payload = jwt.verify(token, JWT_SECRET, { issuer: "mm-reorder-form" });
     req.uid = payload.uid;
+    req.itemId = payload.itemId || null;
     req.jti = payload.jti;
     req.reorderToken = payload.reorderToken;
 
     // Check blacklist
-    isSessionBlacklisted(payload.jti).then((blacklisted) => {
+    isSessionBlacklisted(payload.jti).then(async (blacklisted) => {
       if (blacklisted) {
         return res.status(401).json({ error: "Session expired" });
+      }
+      // Legacy sessions (JWT issued before itemId routing) carry no itemId.
+      // Recover the exact row from the per-row token so writes route correctly.
+      if (!req.itemId && req.reorderToken) {
+        try {
+          const found = await lookupTokenInMonday(req.reorderToken);
+          if (found?.itemId) req.itemId = found.itemId;
+        } catch (e) {
+          console.warn("[auth] itemId recovery in requireAuth failed:", e.message);
+        }
       }
       next();
     }).catch((err) => {

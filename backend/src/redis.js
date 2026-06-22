@@ -13,12 +13,27 @@ redis.on("connect", () => console.log("[redis] Connected"));
 // ─── Reorder token storage ───
 // Token is stored in both Redis (for fast lookup) and Monday (for audit trail)
 
-async function storeReorderToken(token, uid, ttl) {
-  await redis.set(`reorder:${token}`, uid, "EX", ttl);
+async function storeReorderToken(token, uid, itemId, ttl) {
+  // Store both the patient UID and the specific Monday row (itemId) this token
+  // belongs to. itemId is the source of truth for routing writes — a patient can
+  // have multiple rows sharing one UID (e.g. separate sensors/supplies lines),
+  // so UID alone is ambiguous.
+  const payload = JSON.stringify({ uid, itemId: itemId != null ? String(itemId) : null });
+  await redis.set(`reorder:${token}`, payload, "EX", ttl);
 }
 
 async function getReorderToken(token) {
-  return redis.get(`reorder:${token}`);
+  const raw = await redis.get(`reorder:${token}`);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && parsed.uid) {
+      return { uid: parsed.uid, itemId: parsed.itemId != null ? String(parsed.itemId) : null };
+    }
+  } catch {
+    // Legacy format: raw value was the bare UID string (pre-itemId tokens)
+  }
+  return { uid: raw, itemId: null };
 }
 
 async function deleteReorderToken(token) {

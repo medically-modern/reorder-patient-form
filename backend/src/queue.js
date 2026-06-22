@@ -133,17 +133,17 @@ function startReorderWorker() {
     async (job) => {
       const { patient, batchId } = job.data;
       const { itemId, name, uid, phone, nextOrder } = patient;
-      console.log(`[reorder-queue] Processing UID ${uid} (${name}) — attempt ${job.attemptsMade + 1}/${job.opts.attempts}`);
+      console.log(`[reorder-queue] Processing item ${itemId} / UID ${uid} (${name}) — attempt ${job.attemptsMade + 1}/${job.opts.attempts}`);
 
-      // 1. Generate reorder token
-      const token = await generateReorderToken(uid);
+      // 1. Generate reorder token (bound to this specific order row)
+      const token = await generateReorderToken(uid, itemId);
       const link = `${REORDER_URL}?token=${token}`;
 
-      // 2. Store in Monday
-      await storeTokenInMonday(uid, token, link);
+      // 2. Store in Monday — write to this exact row, not "first row for UID"
+      await storeTokenInMonday(itemId, token, link);
 
-      // 3. Fetch product details for SMS template
-      const details = await getPatientOrderDetails(uid);
+      // 3. Fetch product details for SMS template (from this exact row)
+      const details = await getPatientOrderDetails(itemId);
 
       // 4. Send SMS
       const messageText = buildReorderText(name, nextOrder || "TBD", link, {
@@ -262,9 +262,9 @@ async function checkBatchComplete(batchId) {
 
 async function enqueueReorderPatient(patient, batchId) {
   const job = await reorderQueue.add(
-    `reorder-${patient.uid}`,
+    `reorder-${patient.itemId}`,
     { patient, batchId },
-    { jobId: `reorder-${patient.uid}-${batchId}` } // Dedup by UID + batch
+    { jobId: `reorder-${patient.itemId}-${batchId}` } // Dedup by order row (itemId) + batch
   );
   return job.id;
 }
@@ -293,12 +293,12 @@ function startSmsWorker() {
   _smsWorker = new Worker(
     "reorder-confirmation-sms",
     async (job) => {
-      const { uid, optOuts = {} } = job.data;
-      console.log(`[sms-queue] Processing confirmation SMS for UID ${uid} (attempt ${job.attemptsMade + 1}/${job.opts.attempts})`);
+      const { itemId, optOuts = {} } = job.data;
+      console.log(`[sms-queue] Processing confirmation SMS for item ${itemId} (attempt ${job.attemptsMade + 1}/${job.opts.attempts})`);
 
-      const details = await getPatientOrderDetails(uid);
-      if (!details) throw new Error(`Patient ${uid} not found in Monday`);
-      if (!details.phone) throw new Error(`No phone for UID ${uid}`);
+      const details = await getPatientOrderDetails(itemId);
+      if (!details) throw new Error(`Patient row ${itemId} not found in Monday`);
+      if (!details.phone) throw new Error(`No phone for item ${itemId}`);
 
       const messageText = buildConfirmationText({
         name: details.name,
@@ -313,21 +313,21 @@ function startSmsWorker() {
       });
 
       await sendSMS(details.phone, messageText, { patientName: details.name });
-      console.log(`[sms-queue] Confirmation text sent to UID ${uid}`);
-      return { success: true, uid };
+      console.log(`[sms-queue] Confirmation text sent to item ${itemId}`);
+      return { success: true, itemId };
     },
     { connection, concurrency: 2 }
   );
 
   _smsWorker.on("completed", (job, result) => {
-    console.log(`[sms-queue] Completed: confirmation SMS for UID ${result.uid}`);
+    console.log(`[sms-queue] Completed: confirmation SMS for item ${result.itemId}`);
   });
 
   _smsWorker.on("failed", (job, err) => {
     const { notifySmsError } = require("./notify");
     if (job.attemptsMade >= job.opts.attempts) {
-      console.error(`[sms-queue] DEAD LETTER — confirmation SMS for UID ${job.data.uid} failed after ${job.attemptsMade} attempts: ${err.message}`);
-      notifySmsError(`Confirmation SMS dead letter: ${err.message}`, job.data.uid);
+      console.error(`[sms-queue] DEAD LETTER — confirmation SMS for item ${job.data.itemId} failed after ${job.attemptsMade} attempts: ${err.message}`);
+      notifySmsError(`Confirmation SMS dead letter: ${err.message}`, job.data.itemId);
     }
   });
 
@@ -338,13 +338,13 @@ function startSmsWorker() {
   console.log("[sms-queue] Confirmation SMS worker ready");
 }
 
-async function enqueueConfirmationSms(uid, optOuts = {}, delayMs = 20_000) {
+async function enqueueConfirmationSms(itemId, optOuts = {}, delayMs = 20_000) {
   const job = await smsQueue.add(
     "send-confirmation-sms",
-    { uid, optOuts },
+    { itemId, optOuts },
     { delay: delayMs }
   );
-  console.log(`[sms-queue] Enqueued confirmation SMS for UID ${uid} (delay: ${delayMs / 1000}s, jobId: ${job.id})`);
+  console.log(`[sms-queue] Enqueued confirmation SMS for item ${itemId} (delay: ${delayMs / 1000}s, jobId: ${job.id})`);
   return job.id;
 }
 

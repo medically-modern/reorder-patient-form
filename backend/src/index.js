@@ -7,7 +7,7 @@ const cookieParser = require("cookie-parser");
 const multer = require("multer");
 const { verifyReorderToken, generateReorderToken, requireAuth, logout, COOKIE_OPTIONS } = require("./auth");
 const {
-  getPatientData, getPatientOrderDetails, processReorderSubmission, findPatientByPhone, findPatientByUid,
+  getPatientData, getPatientOrderDetails, processReorderSubmission, findPatientByPhone, findPatientByUid, getPatientItemById,
   writeHelpMessage, storeTokenInMonday, getStatusIndexMap, resolveStatusIndex, initWriteQueue, uploadFileToMonday,
 } = require("./monday");
 const { sendSMS, buildConfirmationText, smsHealthCheck } = require("./sms");
@@ -117,11 +117,11 @@ app.get("/auth/verify/:token", authLimiter, async (req, res) => {
       // This handles the case where response was lost to client on a spotty connection
       if (result.status === 401) {
         try {
-          const { lookupTokenInMonday } = require("./monday");
-          // Try to find the UID via Monday (token may still be in the Monday column even after Redis expiry)
-          const uid = await lookupTokenInMonday(token);
-          if (uid) {
-            const patient = await findPatientByUid(uid);
+          const { lookupTokenInMonday, getPatientItemById } = require("./monday");
+          // Resolve the exact row via Monday (token is unique per row, even after Redis expiry)
+          const found = await lookupTokenInMonday(token);
+          if (found?.itemId) {
+            const patient = await getPatientItemById(found.itemId);
             if (patient) {
               const responseCol = patient.column_values?.find(c => c.id === COLUMNS.PATIENT_ORDER_RESPONSE);
               if (responseCol?.text) {
@@ -144,7 +144,7 @@ app.get("/auth/verify/:token", authLimiter, async (req, res) => {
     // recovered from Monday after Redis deletion (the 401-branch check above
     // only fires when token verification fails; this catches when it succeeds
     // via Monday fallback re-seeding).
-    const alreadyDone = await hasSubmitted(result.uid);
+    const alreadyDone = await hasSubmitted(result.itemId || result.uid);
     if (alreadyDone) {
       return res.status(200).json({
         success: false,
@@ -209,6 +209,7 @@ app.post("/admin/generate-token", async (req, res) => {
 
     let patientUid = uid;
     let patientPhone = phone;
+    let patientItemId = req.body.itemId || null;
 
     // If phone provided, look up the patient
     if (phone && !uid) {
@@ -218,21 +219,37 @@ app.post("/admin/generate-token", async (req, res) => {
       }
       patientUid = patient.uid;
       patientPhone = patient.phone;
+      patientItemId = patientItemId || patient.itemId;
     }
 
-    // Generate token
-    const token = await generateReorderToken(patientUid);
+    // Resolve the exact Monday row (itemId) the token belongs to. Writes route by
+    // itemId, not UID, because a patient can have multiple rows sharing one UID.
+    // If the caller didn't supply itemId, fall back to the first row for this UID.
+    if (!patientItemId && patientUid) {
+      const item = await findPatientByUid(patientUid);
+      if (!item) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
+      patientItemId = item.id;
+    }
+    if (!patientItemId) {
+      return res.status(404).json({ error: "Patient row not found" });
+    }
+
+    // Generate token (bound to this specific order row)
+    const token = await generateReorderToken(patientUid, patientItemId);
     const reorderUrl = process.env.REORDER_URL || "https://reorder.medicallymodern.com";
     const link = `${reorderUrl}?token=${token}`;
 
-    // Store token + link in Monday
-    await storeTokenInMonday(patientUid, token, link);
+    // Store token + link in Monday (this exact row)
+    await storeTokenInMonday(patientItemId, token, link);
 
     console.log(`[admin] Reorder token generated for UID ${patientUid}`);
 
     res.json({
       success: true,
       uid: patientUid,
+      itemId: String(patientItemId),
       link,
       token,
       expiresIn: "20 days",
@@ -273,7 +290,7 @@ app.post("/admin/trigger-reorder-check", async (req, res) => {
 app.get("/api/me", apiLimiter, requireAuth, async (req, res) => {
   try {
     // Always pull fresh from Monday — no cache
-    const data = await getPatientData(req.uid);
+    const data = await getPatientData(req.itemId);
     if (!data) {
       return res.status(404).json({ error: "Patient not found" });
     }
@@ -336,7 +353,7 @@ app.post("/api/submit", apiLimiter, requireAuth, upload.array("cards", 2), async
     }
 
     // Prevent double submission
-    const lockAcquired = await acquireSubmissionLock(req.uid);
+    const lockAcquired = await acquireSubmissionLock(req.itemId || req.uid);
     if (!lockAcquired) {
       return res.status(409).json({ error: "Your form is already being submitted. Please wait." });
     }
@@ -401,8 +418,7 @@ app.post("/api/submit", apiLimiter, requireAuth, upload.array("cards", 2), async
       // ─── Insurance card upload (merged into submit) ───
       const uploadedCardUrls = [];
       if (req.files && req.files.length > 0) {
-        const patient = await findPatientByUid(req.uid);
-        const itemId = patient ? patient.id : null;
+        const itemId = req.itemId;
 
         for (const file of req.files) {
           // Save to Railway volume (local backup)
@@ -426,7 +442,7 @@ app.post("/api/submit", apiLimiter, requireAuth, upload.array("cards", 2), async
       }
 
       // ─── Process Monday writes ───
-      const result = await processReorderSubmission(req.uid, submission);
+      const result = await processReorderSubmission(req.itemId, submission);
 
       if (result.partial) {
         return res.status(207).json({
@@ -462,22 +478,22 @@ app.post("/api/submit", apiLimiter, requireAuth, upload.array("cards", 2), async
 
       // Mark as submitted — prevents re-submission even if token is recovered from Monday.
       // TTL = 30 days (outlasts the 20-day token window with margin).
-      await markSubmitted(req.uid, 86400 * 30);
+      await markSubmitted(req.itemId || req.uid, 86400 * 30);
 
       res.status(responseStatus).json(responseBody);
 
       // ─── Enqueue confirmation SMS via BullMQ (persisted, auto-retries) ───
       // Send for confirm and delay responses (not cancel — patient is leaving)
       if (submission.response === "confirm" || submission.response === "delay") {
-        await enqueueConfirmationSms(req.uid, {});
+        await enqueueConfirmationSms(req.itemId, {});
       }
     } finally {
-      await releaseSubmissionLock(req.uid);
+      await releaseSubmissionLock(req.itemId || req.uid);
     }
   } catch (err) {
     console.error("[api] Submit error:", err.message, err.stack);
     await notifySubmissionError(`Submit failed: ${err.message}`, req.uid);
-    await releaseSubmissionLock(req.uid).catch(() => {});
+    await releaseSubmissionLock(req.itemId || req.uid).catch(() => {});
     res.status(500).json({ error: "Failed to submit your form. Please try again." });
   }
 });
@@ -490,7 +506,7 @@ app.post("/api/help-message", apiLimiter, requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Please type a message first." });
     }
 
-    await writeHelpMessage(req.uid, helpMessage.trim(), helpChip);
+    await writeHelpMessage(req.itemId, helpMessage.trim(), helpChip);
     res.json({ success: true });
   } catch (err) {
     console.error("[api] Help message error:", err.message);
