@@ -333,7 +333,7 @@ async function getPatientData(itemId) {
 /**
  * Process a reorder form submission.
  *
- * @param {string} uid - Patient UID
+ * @param {string} itemIdArg - Monday item (row) ID
  * @param {Object} submission - The form data:
  *   - response: "confirm" | "delay" | "cancel"
  *   - newOrderDate: "YYYY-MM-DD" | null (for delay)
@@ -604,7 +604,7 @@ async function processReorderSubmission(itemIdArg, submission) {
 
   // ─── Execute all writes in parallel ───
 
-  console.log(`[monday] Processing reorder submission for UID ${uid}: ${tasks.length} writes, response=${submission.response}`);
+  console.log(`[monday] Processing reorder submission for item ${itemId}: ${tasks.length} writes, response=${submission.response}`);
 
   const results = await Promise.all(
     tasks.map(async (task) => {
