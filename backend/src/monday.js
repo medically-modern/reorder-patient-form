@@ -142,10 +142,18 @@ async function writeLocation(itemId, columnId, address, lat = 0, lng = 0) {
 // ─── Status index resolution ───
 
 let _statusIndexCache = null;
+let _statusIndexCacheAt = 0;
+const STATUS_INDEX_TTL_MS = 5 * 60 * 1000; // pick up Monday label edits without a redeploy
 
 async function getStatusIndexMap() {
-  if (_statusIndexCache) return _statusIndexCache;
-  const data = await mondayQuery(`{ boards(ids: ${validateNumericId(SUBSCRIPTION_BOARD_ID)}) { columns { id type settings_str } } }`);
+  if (_statusIndexCache && Date.now() - _statusIndexCacheAt < STATUS_INDEX_TTL_MS) return _statusIndexCache;
+  let data;
+  try {
+    data = await mondayQuery(`{ boards(ids: ${validateNumericId(SUBSCRIPTION_BOARD_ID)}) { columns { id type settings_str } } }`);
+  } catch (err) {
+    if (_statusIndexCache) return _statusIndexCache; // stale labels beat failing the submit
+    throw err;
+  }
   const map = {};
   for (const col of data.boards[0].columns) {
     if (col.type !== "status") continue;
@@ -162,6 +170,7 @@ async function getStatusIndexMap() {
     } catch {}
   }
   _statusIndexCache = map;
+  _statusIndexCacheAt = Date.now();
   return map;
 }
 

@@ -24,6 +24,8 @@ const state = {
   infQty2: 0,
   cartridgeQty: 3,
   hasSecondSet: false,
+  infUnparsed: { 1: false, 2: false },  // current Monday label not found in INFUSION_MAP
+  infTouched: { 1: false, 2: false },   // patient actually changed the infusion dropdowns
 
   // Snapshots of initial state (for change detection)
   initialSensorType: null,
@@ -280,6 +282,7 @@ const INFUSION_MAP = {
   "Inset": { "6mm": { "23\"": 101 } },
   "Luer": { "6mm": { "32\"": 102 } },
   "Mio Advance Clear": { "9mm": { "23\"": 152 } },
+  "QuickSet": { "": { "18\"": 157 } },  // no cannula-size dimension — Monday label is "QuickSet 18\""
 };
 
 const INFUSION_MAP_SET2 = {
@@ -294,7 +297,7 @@ const PUMP_INFUSION_FILTER = {
   "ilet": ["Contact", "Inset", "Luer"],
   "t:slim": ["AutoSoft XC", "AutoSoft 90", "AutoSoft 30", "TruSteel", "VariSoft"],
   "mobi": ["AutoSoft XC", "AutoSoft 90", "AutoSoft 30", "TruSteel", "VariSoft"],
-  "minimed 780g": ["Mio Advance Clear"],
+  "minimed 780g": ["Mio Advance Clear", "QuickSet"],
 };
 
 function getAllowedBrands() {
@@ -314,7 +317,7 @@ function parseInfusionLabel(label, setNum) {
   for (const [brand, sizes] of Object.entries(map)) {
     for (const [size, tubings] of Object.entries(sizes)) {
       for (const [tubing, idx] of Object.entries(tubings)) {
-        const expected = `${brand} ${size} ${tubing}`.replace(/[\s  ]+/g, ' ').trim().toLowerCase();
+        const expected = [brand, size, tubing].filter(Boolean).join(" ").replace(/[\s  ]+/g, ' ').trim().toLowerCase();
         if (normalized === expected) return { brand, size, tubing, index: idx };
       }
     }
@@ -330,10 +333,14 @@ function populateInfusionDropdowns(setNum, currentValue) {
 
   const allowedBrands = getAllowedBrands();
   const map = getMapForSet(setNum);
+  const parsed = parseInfusionLabel(currentValue, setNum);
+  state.infUnparsed[setNum] = Boolean(currentValue) && !parsed;
   const brands = Object.keys(map).filter(b => !allowedBrands || allowedBrands.includes(b));
+  // Always include the patient's current brand, even if the pump filter excludes it,
+  // so their existing set is never silently replaced by a defaulted dropdown
+  if (parsed && !brands.includes(parsed.brand)) brands.push(parsed.brand);
   brandSelect.innerHTML = brands.map(b => `<option value="${escAttr(b)}">${escHtml(b)}</option>`).join("");
 
-  const parsed = parseInfusionLabel(currentValue, setNum);
   if (parsed) {
     brandSelect.value = parsed.brand;
     populateSizeDropdown(setNum, parsed.brand, parsed.size);
@@ -351,6 +358,9 @@ function populateSizeDropdown(setNum, brand, selectValue) {
   const sizes = Object.keys(map[brand] || {});
   sizeSelect.innerHTML = sizes.map(s => `<option value="${escAttr(s)}">${escHtml(s)}</option>`).join("");
   if (selectValue && sizes.includes(selectValue)) sizeSelect.value = selectValue;
+  // Hide the Size field for sets with no cannula-size dimension (e.g. QuickSet)
+  const field = sizeSelect.closest(".inf-field");
+  if (field) field.style.display = sizes.length === 1 && sizes[0] === "" ? "none" : "";
 }
 
 function populateTubingDropdown(setNum, brand, size, selectValue) {
@@ -381,6 +391,7 @@ function handleSensorTypeChange() {
 }
 
 function handleInfBrandChange(setNum) {
+  state.infTouched[setNum] = true;
   const brand = document.getElementById(`inf-brand-${setNum}`).value;
   const map = getMapForSet(setNum);
   populateSizeDropdown(setNum, brand);
@@ -389,17 +400,23 @@ function handleInfBrandChange(setNum) {
 }
 
 function handleInfSizeChange(setNum) {
+  state.infTouched[setNum] = true;
   const brand = document.getElementById(`inf-brand-${setNum}`).value;
   const size = document.getElementById(`inf-size-${setNum}`).value;
   populateTubingDropdown(setNum, brand, size);
+}
+
+function handleInfTubingChange(setNum) {
+  state.infTouched[setNum] = true;
 }
 
 function getInfusionLabel(setNum) {
   const brand = document.getElementById(`inf-brand-${setNum}`)?.value;
   const size = document.getElementById(`inf-size-${setNum}`)?.value;
   const tubing = document.getElementById(`inf-tubing-${setNum}`)?.value;
-  if (!brand || !size || !tubing) return "";
-  return `${brand} ${size} ${tubing}`;
+  // size may legitimately be "" for sets without a cannula-size dimension (e.g. QuickSet)
+  if (!brand || !tubing) return "";
+  return [brand, size, tubing].filter(Boolean).join(" ");
 }
 
 function getInfusionIndex(setNum) {
@@ -407,7 +424,7 @@ function getInfusionIndex(setNum) {
   const brand = document.getElementById(`inf-brand-${setNum}`)?.value;
   const size = document.getElementById(`inf-size-${setNum}`)?.value;
   const tubing = document.getElementById(`inf-tubing-${setNum}`)?.value;
-  return ((map[brand] || {})[size] || {})[tubing] || null;
+  return ((map[brand] || {})[size ?? ""] || {})[tubing] ?? null;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -472,16 +489,18 @@ function updateProductRowsFromEdits() {
     if (newType) document.getElementById("prod-sensors-name").textContent = newType;
   }
 
-  // Infusion 1
+  // Infusion 1 — keep showing the Monday label when it isn't in our map and wasn't edited
   if (pd.servingInfusionSet1) {
-    document.getElementById("prod-inf1-name").textContent = getInfusionLabel(1) || pd.infusionSet1;
+    const label1 = state.infUnparsed[1] && !state.infTouched[1] ? pd.infusionSet1 : getInfusionLabel(1);
+    document.getElementById("prod-inf1-name").textContent = label1 || pd.infusionSet1;
     document.getElementById("prod-inf1-qty").textContent = String(state.infQty1);
     document.getElementById("prod-inf1-unit").textContent = state.infQty1 === 1 ? "box" : "boxes";
 
     const row2 = document.getElementById("prod-inf2");
     if (state.hasSecondSet) {
       row2.style.display = "";
-      document.getElementById("prod-inf2-name").textContent = getInfusionLabel(2) || "Infusion Set 2";
+      const label2 = state.infUnparsed[2] && !state.infTouched[2] ? pd.infusionSet2 : getInfusionLabel(2);
+      document.getElementById("prod-inf2-name").textContent = label2 || "Infusion Set 2";
       document.getElementById("prod-inf2-qty").textContent = String(state.infQty2);
       document.getElementById("prod-inf2-unit").textContent = state.infQty2 === 1 ? "box" : "boxes";
     } else if (!pd.servingInfusionSet2) {
@@ -1084,15 +1103,20 @@ function buildSubmission() {
     orderChanges.cartridgeQty = state.cartridgeQty;
   }
 
+  // If the patient's current Monday label isn't in our map, the dropdowns show a
+  // defaulted product — never submit that unless the patient actually edited the set
+  const keepCurrentSet1 = state.infUnparsed[1] && !state.infTouched[1];
+  const keepCurrentSet2 = state.infUnparsed[2] && !state.infTouched[2];
+
   if (pd.servingInfusionSet1) {
-    orderChanges.infusionSet1 = getInfusionLabel(1) || null;
-    orderChanges.infusionSet1Index = getInfusionIndex(1);
+    orderChanges.infusionSet1 = keepCurrentSet1 ? null : (getInfusionLabel(1) || null);
+    orderChanges.infusionSet1Index = keepCurrentSet1 ? null : getInfusionIndex(1);
     orderChanges.infQty1 = state.infQty1;
   }
 
   if (state.hasSecondSet) {
-    orderChanges.infusionSet2 = getInfusionLabel(2) || null;
-    orderChanges.infusionSet2Index = getInfusionIndex(2);
+    orderChanges.infusionSet2 = keepCurrentSet2 ? null : (getInfusionLabel(2) || null);
+    orderChanges.infusionSet2Index = keepCurrentSet2 ? null : getInfusionIndex(2);
     orderChanges.infQty2 = state.infQty2;
   } else if (pd.servingInfusionSet2) {
     orderChanges.infusionSet2 = getInfusionLabel(2) || pd.infusionSet2;
