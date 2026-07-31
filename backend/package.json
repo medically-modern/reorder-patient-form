@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "create-columns": "node src/scripts/create-columns.js"
+    "create-columns": "node src/scripts/create-columns.js",
+    "check:labels": "node src/checkLabels.js"
   },
   "dependencies": {
     "express": "^4.18.2",

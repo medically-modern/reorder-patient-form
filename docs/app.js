@@ -28,10 +28,8 @@ const state = {
   // Snapshots of initial state (for change detection)
   initialSensorType: null,
   initialInfLabel1: null,
-  initialInfIndex1: null,
   initialInfQty1: 0,
   initialInfLabel2: null,
-  initialInfIndex2: null,
   initialInfQty2: 0,
 
   // Address
@@ -259,10 +257,8 @@ function renderOrderEditPanel() {
   // Snapshot initial state
   state.initialSensorType = document.getElementById("sensor-type-select")?.value || null;
   state.initialInfLabel1 = getInfusionLabel(1);
-  state.initialInfIndex1 = getInfusionIndex(1);
   state.initialInfQty1 = state.infQty1;
   state.initialInfLabel2 = getInfusionLabel(2);
-  state.initialInfIndex2 = getInfusionIndex(2);
   state.initialInfQty2 = state.infQty2;
 }
 
@@ -270,32 +266,75 @@ function renderOrderEditPanel() {
 // INFUSION SET MAPS — identical to original
 // ═══════════════════════════════════════════════════════
 
+// The three dropdowns compose a label — `brand size tubing` — and THE LABEL IS THE
+// CONTRACT. The backend resolves it against the board's live labels
+// (monday.js resolveStatusIndex) and refuses to write anything it cannot match, so a
+// key here that is spelled differently from the board is not a cosmetic problem: the
+// save fails with `"..." is not a valid option`.
+//
+// These used to map to hardcoded Monday status indexes. Those indexes were never read
+// — the backend resolves label -> index live, and nothing else consumed them — and they
+// had gone stale (this map still said AutoSoft XC 6 mm 23" was index 107; the board says
+// 6). A dead-but-wrong lookup table is a trap for the next person, so the leaves are now
+// just the tubing lengths that brand/size actually offers.
+//
+// SPACING: the boards spell every cannula size "N mm" with a space. This map said "6mm"
+// for Contact/Inset/Luer and "9mm" for Mio Advance Clear, which broke those products in
+// BOTH directions — resolveStatusIndex normalises whitespace runs but never INSERTS a
+// space, so the save was rejected, and parseInfusionLabel could not match a patient's
+// existing value either, so their set silently displayed as some other product.
+//
+// Verified against a live read of Subscription board 18407459988 on 2026-07-31:
+// Infusion Set 1 = color_mkxm50f9, Infusion Set 2 = color_mkxmx5wk. The two slots carry
+// DIFFERENT product lists — slot 2 has no Mio Advance Clear, QuickSet, Luer,
+// AutoSoft XC 9 mm 43" or AutoSoft 30 13 mm 43" — so they get separate maps and slot 2
+// must never be widened to match slot 1.
 const INFUSION_MAP = {
-  "AutoSoft XC": { "6 mm": { "5\"": 151, "23\"": 107, "32\"": 108, "43\"": 110 }, "9 mm": { "23\"": 153, "43\"": 16 } },
-  "AutoSoft 90": { "6 mm": { "23\"": 106, "43\"": 13 }, "9 mm": { "23\"": 156, "43\"": 15 } },
-  "AutoSoft 30": { "13 mm": { "23\"": 105, "43\"": 103 } },
-  "TruSteel": { "6 mm": { "23\"": 154, "32\"": 155 }, "8 mm": { "23\"": 3, "32\"": 18 } },
-  "VariSoft": { "13 mm": { "23\"": 109, "32\"": 12 }, "17 mm": { "23\"": 1 } },
-  "Contact": { "6mm": { "23\"": 19 } },
-  "Inset": { "6mm": { "23\"": 101 } },
-  "Luer": { "6mm": { "32\"": 102 } },
-  "Mio Advance Clear": { "9mm": { "23\"": 152 } },
+  "AutoSoft XC": { "6 mm": ['5"', '23"', '32"', '43"'], "9 mm": ['23"', '43"'] },
+  "AutoSoft 90": { "6 mm": ['23"', '43"'], "9 mm": ['23"', '43"'] },
+  "AutoSoft 30": { "13 mm": ['23"', '43"'] },
+  "TruSteel": { "6 mm": ['23"', '32"'], "8 mm": ['23"', '32"'] },
+  "VariSoft": { "13 mm": ['23"', '32"'], "17 mm": ['23"'] },
+  "Contact": { "6 mm": ['23"'] },
+  "Inset": { "6 mm": ['23"'] },
+  "Mio Advance Clear": { "9 mm": ['23"'] },
+  // QuickSet is named by tubing length only — no cannula size in the board label. The
+  // empty size key is deliberate; joinLabel() drops it so this builds `QuickSet 18"`,
+  // and the Size dropdown hides itself rather than showing one blank option.
+  "QuickSet": { "": ['18"'] },
+  // DELIBERATELY ABSENT: Luer 6 mm 32". It is a live option on Subscription Set 1, but
+  // the Order board's Infusion Set Type 1 has no such label and Cardinal has no SKU for
+  // it, so a Luer patient's set copies across as BLANK and orderBuilder.buildLines drops
+  // a blank line silently — the order ships with no infusion set and nothing errors
+  // (this is exactly how Landon Rose's 7/28 order was lost). Offering it here would
+  // create that failure from a patient tap. Re-add it only once the Order board carries
+  // the label AND skumap.js has the SKU. Zero patients are on it today.
 };
 
 const INFUSION_MAP_SET2 = {
-  "AutoSoft XC": { "6 mm": { "5\"": 2, "23\"": 14, "32\"": 11, "43\"": 0 }, "9 mm": { "23\"": 6 } },
-  "AutoSoft 90": { "6 mm": { "23\"": 15, "43\"": 3 }, "9 mm": { "23\"": 7 } },
-  "AutoSoft 30": { "13 mm": { "23\"": 13 } },
-  "TruSteel": { "6 mm": { "23\"": 1 } },
-  "VariSoft": { "13 mm": { "32\"": 8 } },
+  "AutoSoft XC": { "6 mm": ['5"', '23"', '32"', '43"'], "9 mm": ['23"'] },
+  "AutoSoft 90": { "6 mm": ['23"', '43"'], "9 mm": ['23"', '43"'] },
+  "AutoSoft 30": { "13 mm": ['23"'] },
+  "TruSteel": { "6 mm": ['23"', '32"'], "8 mm": ['23"', '32"'] },
+  "VariSoft": { "13 mm": ['23"', '32"'], "17 mm": ['23"'] },
+  "Contact": { "6 mm": ['23"'] },
+  "Inset": { "6 mm": ['23"'] },
 };
 
 const PUMP_INFUSION_FILTER = {
   "ilet": ["Contact", "Inset", "Luer"],
   "t:slim": ["AutoSoft XC", "AutoSoft 90", "AutoSoft 30", "TruSteel", "VariSoft"],
   "mobi": ["AutoSoft XC", "AutoSoft 90", "AutoSoft 30", "TruSteel", "VariSoft"],
-  "minimed 780g": ["Mio Advance Clear"],
+  // QuickSet is the MiniMed Quick-set for the 780G (skumap.js: MNMMT394AI, MMT-394A).
+  // Both boards and the subscriber portal offer it; this form was the only one that did not.
+  "minimed 780g": ["Mio Advance Clear", "QuickSet"],
 };
+
+// Board labels put a single space between the parts, and a size-less product
+// (QuickSet 18") must not produce the double space that naive interpolation gives.
+function joinLabel(brand, size, tubing) {
+  return [brand, size, tubing].filter(Boolean).join(" ");
+}
 
 function getAllowedBrands() {
   const pumpType = (state.patientData?.suppliesType || "").toLowerCase().trim();
@@ -313,9 +352,9 @@ function parseInfusionLabel(label, setNum) {
   const normalized = label.replace(/[\s  ]+/g, ' ').trim().toLowerCase();
   for (const [brand, sizes] of Object.entries(map)) {
     for (const [size, tubings] of Object.entries(sizes)) {
-      for (const [tubing, idx] of Object.entries(tubings)) {
-        const expected = `${brand} ${size} ${tubing}`.replace(/[\s  ]+/g, ' ').trim().toLowerCase();
-        if (normalized === expected) return { brand, size, tubing, index: idx };
+      for (const tubing of tubings) {
+        const expected = joinLabel(brand, size, tubing).replace(/[\s  ]+/g, ' ').trim().toLowerCase();
+        if (normalized === expected) return { brand, size, tubing };
       }
     }
   }
@@ -351,12 +390,16 @@ function populateSizeDropdown(setNum, brand, selectValue) {
   const sizes = Object.keys(map[brand] || {});
   sizeSelect.innerHTML = sizes.map(s => `<option value="${escAttr(s)}">${escHtml(s)}</option>`).join("");
   if (selectValue && sizes.includes(selectValue)) sizeSelect.value = selectValue;
+  // A product named by tubing length alone (QuickSet 18") has one empty size. Showing a
+  // blank "Size" dropdown reads as a form that failed to load, so hide the field instead.
+  const sizeField = sizeSelect.closest(".inf-field");
+  if (sizeField) sizeField.style.display = sizes.every(s => s === "") ? "none" : "";
 }
 
 function populateTubingDropdown(setNum, brand, size, selectValue) {
   const tubingSelect = document.getElementById(`inf-tubing-${setNum}`);
   const map = getMapForSet(setNum);
-  let tubings = Object.keys((map[brand] || {})[size] || {});
+  let tubings = ((map[brand] || {})[size] || []).slice();
   // Block 5" tubing for t:slim — not compatible
   const pumpType = (state.patientData?.suppliesType || "").toLowerCase();
   if (pumpType.includes("t:slim")) {
@@ -398,16 +441,9 @@ function getInfusionLabel(setNum) {
   const brand = document.getElementById(`inf-brand-${setNum}`)?.value;
   const size = document.getElementById(`inf-size-${setNum}`)?.value;
   const tubing = document.getElementById(`inf-tubing-${setNum}`)?.value;
-  if (!brand || !size || !tubing) return "";
-  return `${brand} ${size} ${tubing}`;
-}
-
-function getInfusionIndex(setNum) {
-  const map = getMapForSet(setNum);
-  const brand = document.getElementById(`inf-brand-${setNum}`)?.value;
-  const size = document.getElementById(`inf-size-${setNum}`)?.value;
-  const tubing = document.getElementById(`inf-tubing-${setNum}`)?.value;
-  return ((map[brand] || {})[size] || {})[tubing] || null;
+  // `size` is legitimately empty for a size-less product, so only brand and tubing gate this.
+  if (!brand || !tubing) return "";
+  return joinLabel(brand, size, tubing);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1084,19 +1120,18 @@ function buildSubmission() {
     orderChanges.cartridgeQty = state.cartridgeQty;
   }
 
+  // Only the label is sent. The backend resolves it against the board's live labels;
+  // a client-side index would be stale the moment anyone edits the column.
   if (pd.servingInfusionSet1) {
     orderChanges.infusionSet1 = getInfusionLabel(1) || null;
-    orderChanges.infusionSet1Index = getInfusionIndex(1);
     orderChanges.infQty1 = state.infQty1;
   }
 
   if (state.hasSecondSet) {
     orderChanges.infusionSet2 = getInfusionLabel(2) || null;
-    orderChanges.infusionSet2Index = getInfusionIndex(2);
     orderChanges.infQty2 = state.infQty2;
   } else if (pd.servingInfusionSet2) {
     orderChanges.infusionSet2 = getInfusionLabel(2) || pd.infusionSet2;
-    orderChanges.infusionSet2Index = getInfusionIndex(2);
     orderChanges.infQty2 = state.infQty2;
   }
 
