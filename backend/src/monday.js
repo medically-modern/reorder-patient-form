@@ -141,10 +141,20 @@ async function writeLocation(itemId, columnId, address, lat = 0, lng = 0) {
 
 // ─── Status index resolution ───
 
+// Cached with a TTL, not for the process lifetime. Board labels DO get edited
+// (the July 2026 infusion-set dedup removed 18 labels across two columns), and a
+// permanently-cached map keeps resolving to indexes that no longer exist — which
+// Monday accepts as a blank rather than an error. A stale entry can therefore
+// silently blank a patient's infusion set until someone redeploys. Five minutes
+// bounds that window without making a settings query per submission.
+const STATUS_INDEX_TTL_MS = 5 * 60 * 1000;
 let _statusIndexCache = null;
+let _statusIndexCacheAt = 0;
 
 async function getStatusIndexMap() {
-  if (_statusIndexCache) return _statusIndexCache;
+  if (_statusIndexCache && Date.now() - _statusIndexCacheAt < STATUS_INDEX_TTL_MS) {
+    return _statusIndexCache;
+  }
   const data = await mondayQuery(`{ boards(ids: ${validateNumericId(SUBSCRIPTION_BOARD_ID)}) { columns { id type settings_str } } }`);
   const map = {};
   for (const col of data.boards[0].columns) {
@@ -162,6 +172,7 @@ async function getStatusIndexMap() {
     } catch {}
   }
   _statusIndexCache = map;
+  _statusIndexCacheAt = Date.now();
   return map;
 }
 
