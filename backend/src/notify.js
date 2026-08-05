@@ -1,10 +1,22 @@
 // ─── Error Notification via ntfy.sh ───
-// Sends all system errors to ntfy.sh/mm-portal as push notifications.
-// Fire-and-forget — notification failures are logged but never throw.
+// Sends all system errors to the ntfy.sh topic named by NTFY_TOPIC as push
+// notifications. Fire-and-forget — notification failures are logged but never throw.
+//
+// The topic name is the ONLY access control ntfy.sh has: anyone who knows it can
+// read every alert this service sends and publish forged ones into it. This repo is
+// public, so the name must come from the environment and must never be committed
+// here. An unset NTFY_TOPIC therefore disables notifications rather than falling
+// back to a literal — a fallback in this file would be a published credential.
 
-const NTFY_TOPIC = process.env.NTFY_TOPIC || "mm-portal";
-const NTFY_URL = `https://ntfy.sh/${NTFY_TOPIC}`;
+const NTFY_TOPIC = process.env.NTFY_TOPIC || "";
+const NTFY_URL = NTFY_TOPIC ? `https://ntfy.sh/${NTFY_TOPIC}` : "";
 const SERVICE_NAME = "reorder-patient-form";
+
+if (!NTFY_URL) {
+  // Loud at startup: every send below is a silent no-op until this is set, and
+  // the alerts it drops are the ones that report the service is unhealthy.
+  console.warn("[notify] NTFY_TOPIC is not set — error notifications are DISABLED.");
+}
 
 /**
  * Send an error notification to ntfy.sh
@@ -16,6 +28,8 @@ const SERVICE_NAME = "reorder-patient-form";
  * @param {string} [opts.uid] - Patient UID if relevant
  */
 async function notifyError(title, message, opts = {}) {
+  if (!NTFY_URL) return;
+
   const priority = opts.priority || "high";
   const tags = opts.tags || ["rotating_light"];
   const fullMessage = opts.uid
