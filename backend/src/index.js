@@ -14,7 +14,7 @@ const { sendSMS, buildConfirmationText, smsHealthCheck } = require("./sms");
 const { uploadInsuranceCard } = require("./s3");
 const { queueHealthCheck } = require("./queue");
 const { startCron, checkAndProcessReorders } = require("./cron");
-const { notifySubmissionError, notifySmsError, notifyUnhandled, notifyError } = require("./notify");
+const { notifySubmissionError, notifySmsError, notifyUnhandled, notifyError, notifyHealthCheck } = require("./notify");
 const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, deleteReorderToken, getIdempotencyResult, setIdempotencyResult, markSubmitted, hasSubmitted } = require("./redis");
 const { enqueueConfirmationSms } = require("./queue");
 const { COLUMNS } = require("./config");
@@ -84,12 +84,17 @@ app.get("/health", async (req, res) => {
   const redisOk = await healthCheck();
   const queue = queueHealthCheck();
   const sms = smsHealthCheck();
+  const notify = notifyHealthCheck();
   res.json({
     status: "ok",
     service: "reorder-patient-form",
     redis: redisOk ? "connected" : "disconnected",
     queue,
     sms,
+    // Alerting is the channel that reports every other failure here, so its own
+    // state has to be externally visible — otherwise a dead notification path
+    // looks exactly like a healthy service with nothing to report.
+    notify,
     cron: "active",
     timestamp: new Date().toISOString(),
   });
