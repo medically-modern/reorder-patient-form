@@ -11,7 +11,7 @@ const {
   writeHelpMessage, storeTokenInMonday, getStatusIndexMap, resolveStatusIndex, initWriteQueue, uploadFileToMonday,
   mondayQuery,
 } = require("./monday");
-const { getProductStatus, toPatientMap } = require("./skuStatus");
+const { getProductStatus, toPatientMap, skuHealthCheck } = require("./skuStatus");
 const { sendSMS, buildConfirmationText, smsHealthCheck } = require("./sms");
 const { uploadInsuranceCard } = require("./s3");
 const { queueHealthCheck } = require("./queue");
@@ -97,6 +97,10 @@ app.get("/health", async (req, res) => {
     // state has to be externally visible — otherwise a dead notification path
     // looks exactly like a healthy service with nothing to report.
     notify,
+    // Stock status fails silently to the patient on purpose — a wrong badge is worse
+    // than none. That makes an outage look identical to "everything is in stock", so
+    // its state has to be readable from outside.
+    stock: skuHealthCheck(),
     cron: "active",
     timestamp: new Date().toISOString(),
   });
@@ -316,7 +320,12 @@ app.get("/api/order-options", apiLimiter, requireAuth, async (req, res) => {
   try {
     // Stock status is a courtesy on top of the reorder, never a gate on it. If the SKU
     // board is unreachable the form must still load and still submit, just without the
-    // backorder notes — so this failure is swallowed rather than surfaced as a 500.
+    // backorder notes.
+    //
+    // getProductStatus handles its own failures — it degrades to an empty map, records
+    // the reason on /health and alerts — so it does not throw. The catch is a backstop
+    // for anything unforeseen, and deliberately keeps the same never-block-the-reorder
+    // behaviour rather than letting it 500 the whole endpoint.
     const [indexMap, productStatus] = await Promise.all([
       getStatusIndexMap(),
       getProductStatus(mondayQuery)

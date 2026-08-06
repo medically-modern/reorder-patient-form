@@ -62,6 +62,16 @@ const MAX_STALE_MS = 48 * 60 * 60 * 1000;
 // so that a hand-fixed status reaches patients within the quarter hour.
 const CACHE_TTL_MS = 15 * 60 * 1000;
 
+// A degraded result is cached too, for much less time. Without this every page load
+// during a Monday outage re-runs the failing query, so the moment the API is unwell the
+// form starts hammering it — one patient's retries become all patients' retries.
+const FAILURE_CACHE_TTL_MS = 60 * 1000;
+
+// While the status stays broken, re-alert this often. The first alert fires on the
+// transition into a bad state, so this is only about not letting a long outage fall
+// out of memory — not about volume.
+const ALERT_REPEAT_MS = 6 * 60 * 60 * 1000;
+
 // Same folding the board resolvers use (monday.js resolveStatusIndex, checkLabels.js
 // norm): narrow no-break space, non-breaking space and doubled runs collapse. Nothing
 // here ever INSERTS a space — that asymmetry is why ALIAS below has to exist.
@@ -93,6 +103,75 @@ function key(group, name) {
 
 let _cache = null;
 let _cacheAt = 0;
+let _cacheTtl = CACHE_TTL_MS;
+
+// ─── Health and alerting ───
+//
+// This feature is designed to fail silently AT THE PATIENT — a guess about stock is
+// worse than no badge. But silent at the patient must not mean silent at us: an
+// unreachable board and a board where everything happens to be in stock produce
+// byte-identical output, so without this an outage looks exactly like good news while
+// patients carry on confirming orders that cannot ship.
+//
+// Same shape as notify.js and queue.js: counters plus a snapshot on /health, so the
+// state is externally visible even if a push is missed.
+const health = {
+  status: "unknown", // unknown | ok | stale | error
+  detail: null,
+  lastOkAt: null,
+  lastBadAt: null,
+  consecutiveFailures: 0,
+  lastRunAt: null,
+};
+let _lastAlertAt = 0;
+
+function skuHealthCheck() {
+  return { ...health };
+}
+
+function recordOk(lastRunAt) {
+  const recovering = health.status === "stale" || health.status === "error";
+  health.status = "ok";
+  health.detail = null;
+  health.lastOkAt = new Date().toISOString();
+  health.lastRunAt = lastRunAt ? new Date(lastRunAt).toISOString() : null;
+  health.consecutiveFailures = 0;
+  if (recovering) {
+    _lastAlertAt = 0;
+    notify("Stock status recovered", "Patient-facing backorder warnings are live again.", "low");
+  }
+}
+
+function recordBad(status, detail) {
+  const changed = health.status !== status || health.detail !== detail;
+  health.status = status;
+  health.detail = detail;
+  health.lastBadAt = new Date().toISOString();
+  health.consecutiveFailures += 1;
+  console.warn(`[sku] ${detail}`);
+
+  // Alert on entering a bad state, then at most every ALERT_REPEAT_MS. /api/order-options
+  // is hit once per patient page load, so alerting per failure would page continuously.
+  const due = Date.now() - _lastAlertAt > ALERT_REPEAT_MS;
+  if (changed || due) {
+    _lastAlertAt = Date.now();
+    notify(
+      "Stock status unavailable",
+      `${detail}\n\nPatients are seeing NO backorder warnings — the reorder form is otherwise fine.`,
+      "default"
+    );
+  }
+}
+
+// Required lazily: notify.js is a leaf, but going through the top of the module graph
+// here would make skuStatus <-> monday <-> notify a cycle at load time.
+function notify(title, message, priority) {
+  try {
+    require("./notify").notifyError(title, message, { priority, tags: ["package"] });
+  } catch (err) {
+    console.warn(`[sku] could not send alert: ${err.message}`);
+  }
+}
 
 // Injected so tests and check:labels can drive this without the whole monday.js graph.
 async function fetchSkuBoard(mondayQuery) {
@@ -155,23 +234,41 @@ function buildIndex(items) {
   return { lastRunAt, byKey };
 }
 
+// Never throws. A degraded return renders no badges, which is the same thing the caller
+// would do with an exception — but keeping it here means the failure is recorded and
+// alerted in one place rather than depending on every call site to do it.
 async function getProductStatus(mondayQuery) {
-  if (_cache && Date.now() - _cacheAt < CACHE_TTL_MS) return _cache;
+  if (_cache && Date.now() - _cacheAt < _cacheTtl) return _cache;
 
-  const items = await fetchSkuBoard(mondayQuery);
+  const degraded = (status, detail) => {
+    recordBad(status, detail);
+    _cache = { fresh: false, lastRunAt: 0, byKey: new Map() };
+    _cacheAt = Date.now();
+    _cacheTtl = FAILURE_CACHE_TTL_MS;
+    return _cache;
+  };
+
+  let items;
+  try {
+    items = await fetchSkuBoard(mondayQuery);
+  } catch (err) {
+    return degraded("error", `SKU board query failed: ${err.message}`);
+  }
+
   const { lastRunAt, byKey } = buildIndex(items);
-
   const age = lastRunAt ? Date.now() - lastRunAt : Infinity;
-  const fresh = age < MAX_STALE_MS;
-  if (!fresh) {
-    console.warn(
-      `[sku] poller last ran ${lastRunAt ? `${Math.round(age / 3600000)}h ago` : "never"} — ` +
-        "suppressing patient-facing stock status"
+  if (age >= MAX_STALE_MS) {
+    return degraded(
+      "stale",
+      `Cardinal poller last ran ${lastRunAt ? `${Math.round(age / 3600000)}h ago` : "never"} ` +
+        `(threshold ${Math.round(MAX_STALE_MS / 3600000)}h) — stock data is not trustworthy`
     );
   }
 
-  _cache = { fresh, lastRunAt, byKey };
+  recordOk(lastRunAt);
+  _cache = { fresh: true, lastRunAt, byKey };
   _cacheAt = Date.now();
+  _cacheTtl = CACHE_TTL_MS;
   return _cache;
 }
 
@@ -203,7 +300,9 @@ module.exports = {
   UNAVAILABLE,
   PATIENT_GROUPS,
   CACHE_TTL_MS,
+  FAILURE_CACHE_TTL_MS,
   MAX_STALE_MS,
+  skuHealthCheck,
   norm,
   alias,
   key,
