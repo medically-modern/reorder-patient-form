@@ -258,6 +258,10 @@ function renderOrderEditPanel() {
     renderCartridgeStock();
   }
 
+  // After the selects are populated, so the flags read the same composed labels the
+  // notes do rather than the raw board values.
+  renderAllProductFlags();
+
   // Snapshot initial state
   state.initialSensorType = document.getElementById("sensor-type-select")?.value || null;
   state.initialInfLabel1 = getInfusionLabel(1);
@@ -464,6 +468,34 @@ function renderStockWarning(elId, group, label, canSwitch) {
   el.classList.toggle("hidden", !show);
 }
 
+// The summary rows are the one screen every patient sees — many confirm without ever
+// opening the editor, and for them the note under the picker may as well not exist. The
+// flag is a label rather than the full sentence because up to four rows carry one; the
+// wording is kept in step with the note so the two read as the same fact stated twice.
+function renderProductFlag(elId, group, label) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.classList.toggle("hidden", !isBackordered(group, label));
+}
+
+// Called on first render and again whenever the editor closes, because by then the
+// patient may have switched to (or away from) something unavailable.
+function renderAllProductFlags() {
+  const pd = state.patientData;
+  if (!pd) return;
+  const infLabel = (n, fallback) => (state.orderOptions ? getInfusionLabel(n) : "") || fallback;
+
+  renderProductFlag("prod-sensors-flag", STOCK_GROUPS.SENSORS,
+    document.getElementById("sensor-type-select")?.value || pd.sensorsType);
+  renderProductFlag("prod-inf1-flag", STOCK_GROUPS.INFUSION_SETS,
+    infLabel(1, pd.infusionSet1));
+  // Set 2's row is hidden when the patient has no second set; flagging it anyway is
+  // harmless but pointless, and would light up a row nobody can see.
+  renderProductFlag("prod-inf2-flag", STOCK_GROUPS.INFUSION_SETS,
+    state.hasSecondSet || pd.servingInfusionSet2 ? infLabel(2, pd.infusionSet2) : "");
+  renderProductFlag("prod-cartridges-flag", STOCK_GROUPS.CARTRIDGES, pd.suppliesType);
+}
+
 function renderInfusionStock(setNum) {
   renderStockWarning(
     `inf-stock-warning-${setNum}`,
@@ -626,6 +658,9 @@ function updateProductRowsFromEdits() {
     document.getElementById("prod-cartridges-qty").textContent = String(state.cartridgeQty);
     document.getElementById("prod-cartridges-unit").textContent = state.cartridgeQty === 1 ? "box" : "boxes";
   }
+
+  // The summary now shows whatever the patient just picked, so its flags have to follow.
+  renderAllProductFlags();
 
   updateOop();
 }

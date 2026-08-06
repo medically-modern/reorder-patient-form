@@ -173,6 +173,13 @@ h1, h2, h3, h4 { font-family: 'Poppins', system-ui, sans-serif; letter-spacing: 
 .product-body{flex:1;min-width:0}
 .product-name{font-family:'Poppins',sans-serif;font-size:.92rem;font-weight:600;color:var(--text);letter-spacing:0}
 .product-meta{font-family:'IBM Plex Mono',monospace;font-size:.74rem;color:var(--text-muted);margin-top:2px;letter-spacing:.02em}
+/* Backorder flag on the summary row. Only unavailable products get one, so an unmarked
+   row reads as fine without the patient having to check anything. */
+.product-flag{display:inline-flex;align-items:center;gap:5px;width:fit-content;margin-top:5px;
+  font-family:'Poppins',sans-serif;font-size:.68rem;font-weight:600;letter-spacing:.01em;
+  padding:2px 9px;border-radius:99px;
+  color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-border)}
+.product-flag::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
 .product-qty{min-width:66px;text-align:center;background:#fff;border:1px solid var(--chip-line);border-radius:14px;padding:8px 6px;flex-shrink:0}
 .product-qty-num{font-family:'Poppins',sans-serif;font-size:.9rem;font-weight:700;color:var(--text);line-height:1.1}
 .product-qty-unit{font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.12em;margin-top:2px}
