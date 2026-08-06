@@ -226,6 +226,7 @@ function renderOrderEditPanel() {
     select.innerHTML = opts.sensorsTypes
       .map(o => `<option value="${escAttr(o.label)}" ${o.label.toLowerCase() === (pd.sensorsType || "").toLowerCase() ? "selected" : ""}>${escHtml(o.label)}</option>`)
       .join("");
+    renderSensorStock();
   }
 
   // Infusion
@@ -233,6 +234,7 @@ function renderOrderEditPanel() {
     document.getElementById("edit-infusion").style.display = "";
     populateInfusionDropdowns(1, pd.infusionSet1);
     document.getElementById("inf-qty-1").textContent = String(state.infQty1);
+    renderInfusionStock(1);
 
     if (pd.servingInfusionSet2) {
       document.getElementById("inf-set-tag-1").style.display = "";
@@ -241,6 +243,7 @@ function renderOrderEditPanel() {
       document.getElementById("add-set-link").classList.add("hidden");
       populateInfusionDropdowns(2, pd.infusionSet2);
       document.getElementById("inf-qty-2").textContent = String(state.infQty2);
+      renderInfusionStock(2);
     }
 
     updateQtyButtons();
@@ -252,6 +255,7 @@ function renderOrderEditPanel() {
     document.getElementById("cartridge-display").textContent = pd.suppliesType || "Cartridges";
     document.getElementById("cartridge-qty-stepper").textContent = String(state.cartridgeQty);
     updateCartridgeQtyButtons();
+    renderCartridgeStock();
   }
 
   // Snapshot initial state
@@ -409,7 +413,89 @@ function populateTubingDropdown(setNum, brand, size, selectValue) {
   if (selectValue && tubings.includes(selectValue)) tubingSelect.value = selectValue;
 }
 
+// ═══════════════════════════════════════════════════════
+// CARDINAL STOCK STATUS
+// ═══════════════════════════════════════════════════════
+//
+// The backend sends `productStatus`, a flat map of "Group::normalised name" to
+// "backordered", carrying ONLY the products Cardinal cannot ship right now. An absent
+// key means say nothing — that covers Available (the overwhelming majority), a product
+// the tracker has never heard of, an unreachable SKU board, and a stale poller. All
+// four of those are cases where silence is the honest answer, so they share a code path.
+//
+// Group names are the tracker's own, and pair with the label the form composes. They
+// must match backend/src/skuStatus.js GROUPS exactly.
+const STOCK_GROUPS = {
+  SENSORS: "CGM Sensors",
+  CARTRIDGES: "Cartridges",
+  INFUSION_SETS: "Infusion Sets",
+};
+
+// Same folding as the backend (skuStatus.js norm, monday.js resolveStatusIndex):
+// collapse odd spaces, never insert one.
+function stockNorm(s) {
+  return String(s || "").replace(/[\s  ]+/g, " ").trim().toLowerCase();
+}
+
+function isBackordered(group, label) {
+  if (!label) return false;
+  const map = state.orderOptions?.productStatus;
+  if (!map) return false;
+  return map[`${group}::${stockNorm(label)}`] === "backordered";
+}
+
+// Two wordings, because the two situations offer the patient different actions.
+// Infusion sets and sensors are theirs to change, so they get the recommendation.
+// Cartridges follow the pump and are not independently selectable, so recommending a
+// switch would point at a control that does not exist — they get the fact only.
+function backorderCopy(label, { canSwitch }) {
+  return canSwitch
+    ? `${label} is on backorder. We'd recommend choosing a different option for this order — you can always switch back on your next one.`
+    : `${label} is on backorder. We're on it, and we'll be in touch if it's going to hold your order up.`;
+}
+
+function renderStockWarning(elId, group, label, canSwitch) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const show = isBackordered(group, label);
+  if (show) {
+    el.querySelector("span").textContent = backorderCopy(label, { canSwitch });
+  }
+  el.classList.toggle("hidden", !show);
+}
+
+function renderInfusionStock(setNum) {
+  renderStockWarning(
+    `inf-stock-warning-${setNum}`,
+    STOCK_GROUPS.INFUSION_SETS,
+    getInfusionLabel(setNum),
+    true
+  );
+}
+
+function renderSensorStock() {
+  renderStockWarning(
+    "sensor-stock-warning",
+    STOCK_GROUPS.SENSORS,
+    document.getElementById("sensor-type-select")?.value || "",
+    true
+  );
+}
+
+// Cartridges are keyed by pump name, and the tracker carries the same four names under
+// both Insulin Pumps and Cartridges with different SKUs and independent stock — so this
+// must read the Cartridges group, never the pump one.
+function renderCartridgeStock() {
+  renderStockWarning(
+    "cartridge-stock-warning",
+    STOCK_GROUPS.CARTRIDGES,
+    state.patientData?.suppliesType || "",
+    false
+  );
+}
+
 function handleSensorTypeChange() {
+  renderSensorStock();
   const warning = document.getElementById("sensor-compat-warning");
   if (!warning) return;
   const pd = state.patientData;
@@ -429,12 +515,22 @@ function handleInfBrandChange(setNum) {
   populateSizeDropdown(setNum, brand);
   const firstSize = Object.keys(map[brand] || {})[0];
   populateTubingDropdown(setNum, brand, firstSize);
+  renderInfusionStock(setNum);
 }
 
 function handleInfSizeChange(setNum) {
   const brand = document.getElementById(`inf-brand-${setNum}`).value;
   const size = document.getElementById(`inf-size-${setNum}`).value;
   populateTubingDropdown(setNum, brand, size);
+  renderInfusionStock(setNum);
+}
+
+// Brand and size have always had handlers because they repopulate the selects below
+// them. Length is the last link in the chain and repopulates nothing, so it had none —
+// but it still changes the composed label, and therefore the product being looked up.
+// Without this a patient switching 23" to 32" keeps the old set's backorder note.
+function handleInfTubingChange(setNum) {
+  renderInfusionStock(setNum);
 }
 
 function getInfusionLabel(setNum) {
@@ -647,6 +743,7 @@ function addSecondSet() {
   document.getElementById("inf-section-label").textContent = "Infusion Sets";
   document.getElementById("inf-qty-2").textContent = "0";
   populateInfusionDropdowns(2, "");
+  renderInfusionStock(2);
   updateQtyButtons();
 }
 

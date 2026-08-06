@@ -9,7 +9,9 @@ const { verifyReorderToken, generateReorderToken, requireAuth, logout, COOKIE_OP
 const {
   getPatientData, getPatientOrderDetails, processReorderSubmission, findPatientByPhone, findPatientByUid, getPatientItemById,
   writeHelpMessage, storeTokenInMonday, getStatusIndexMap, resolveStatusIndex, initWriteQueue, uploadFileToMonday,
+  mondayQuery,
 } = require("./monday");
+const { getProductStatus, toPatientMap } = require("./skuStatus");
 const { sendSMS, buildConfirmationText, smsHealthCheck } = require("./sms");
 const { uploadInsuranceCard } = require("./s3");
 const { queueHealthCheck } = require("./queue");
@@ -312,7 +314,18 @@ app.get("/api/me", apiLimiter, requireAuth, async (req, res) => {
 // GET /api/order-options — Get dropdown options for order fields
 app.get("/api/order-options", apiLimiter, requireAuth, async (req, res) => {
   try {
-    const indexMap = await getStatusIndexMap();
+    // Stock status is a courtesy on top of the reorder, never a gate on it. If the SKU
+    // board is unreachable the form must still load and still submit, just without the
+    // backorder notes — so this failure is swallowed rather than surfaced as a 500.
+    const [indexMap, productStatus] = await Promise.all([
+      getStatusIndexMap(),
+      getProductStatus(mondayQuery)
+        .then(toPatientMap)
+        .catch((err) => {
+          console.warn("[api] Stock status unavailable, rendering without it:", err.message);
+          return {};
+        }),
+    ]);
 
     // Build human-readable options from the index map
     const buildOptions = (columnId) => {
@@ -331,6 +344,10 @@ app.get("/api/order-options", apiLimiter, requireAuth, async (req, res) => {
       sensorsTypes: buildOptions(COLUMNS.SENSORS_TYPE),
       suppliesTypes: buildOptions(COLUMNS.SUPPLIES_TYPE),
       infusionSets: buildOptions(COLUMNS.INFUSION_SET_1),
+      // { "Infusion Sets::autosoft 90 6 mm 23\"": "backordered" } — unavailable products
+      // only. An absent key means say nothing. Empty when the SKU board is unreachable
+      // or its poller has gone stale.
+      productStatus,
       insuranceTypes: [
         "United", "Aetna", "Cigna", "Anthem BCBS", "Medicare",
         "Medicaid", "NYSHIP", "Fidelis", "WellCare", "Humana", "Other",

@@ -21,8 +21,18 @@
 const fs = require("fs");
 const path = require("path");
 const { SUBSCRIPTION_BOARD_ID, COLUMNS } = require("./config");
+const { SKU_BOARD_ID, GROUPS, alias } = require("./skuStatus");
 
 const API_URL = "https://api.monday.com/v2";
+
+// Products the form can offer that have no row on the Cardinal SKU Tracker, each with
+// the reason. A product not listed here and missing from the tracker is a coverage hole:
+// the patient gets no backorder warning for it, silently.
+const NO_SKU_ROW = {
+  Instinct:
+    "live Sensors Type label with no tracker row — unconfirmed whether this is a real " +
+    "product or a stale label. Patients on it get no stock status until that is settled",
+};
 
 // Products the form deliberately does NOT offer, each with the reason. Anything else that
 // is on the board but missing from the form is reported as drift.
@@ -71,12 +81,7 @@ function loadFormMaps() {
   return { set1: expand(out.INFUSION_MAP), set2: expand(out.INFUSION_MAP_SET2) };
 }
 
-async function fetchBoardLabels(token) {
-  const query = `query {
-    boards(ids: [${SUBSCRIPTION_BOARD_ID}]) {
-      columns(ids: ["${COLUMNS.INFUSION_SET_1}", "${COLUMNS.INFUSION_SET_2}"]) { id settings_str }
-    }
-  }`;
+async function gql(token, query) {
   const res = await fetch(API_URL, {
     method: "POST",
     headers: { Authorization: token, "Content-Type": "application/json" },
@@ -85,16 +90,96 @@ async function fetchBoardLabels(token) {
   if (!res.ok) throw new Error(`Monday HTTP ${res.status}`);
   const json = await res.json();
   if (json.errors) throw new Error(`Monday API: ${JSON.stringify(json.errors)}`);
+  return json.data;
+}
+
+async function fetchBoardLabels(token) {
+  const data = await gql(token, `query {
+    boards(ids: [${SUBSCRIPTION_BOARD_ID}]) {
+      columns(ids: ["${COLUMNS.INFUSION_SET_1}", "${COLUMNS.INFUSION_SET_2}", "${COLUMNS.SENSORS_TYPE}", "${COLUMNS.SUPPLIES_TYPE}"]) { id settings_str }
+    }
+  }`);
 
   const byId = {};
-  for (const col of json.data.boards[0].columns) {
+  for (const col of data.boards[0].columns) {
     // Drop Monday's reserved blank label (the "unset" sentinel) and "Not Serving",
     // which is a state rather than a product the form should offer.
     byId[col.id] = Object.values(JSON.parse(col.settings_str).labels).filter(
       (l) => l !== "" && l !== "Not Serving"
     );
   }
-  return { set1: byId[COLUMNS.INFUSION_SET_1], set2: byId[COLUMNS.INFUSION_SET_2] };
+  return {
+    set1: byId[COLUMNS.INFUSION_SET_1],
+    set2: byId[COLUMNS.INFUSION_SET_2],
+    sensors: byId[COLUMNS.SENSORS_TYPE],
+    supplies: byId[COLUMNS.SUPPLIES_TYPE],
+  };
+}
+
+// Rows on the Cardinal SKU Tracker, as { group -> Set(normalised name) }.
+async function fetchSkuRows(token) {
+  const data = await gql(token, `query {
+    boards(ids: [${SKU_BOARD_ID}]) {
+      items_page(limit: 500) { items { name group { title } } }
+    }
+  }`);
+
+  const byGroup = {};
+  for (const item of data.boards[0].items_page.items) {
+    const g = item.group?.title;
+    if (!g) continue;
+    byGroup[g] ||= { direct: new Set(), aliased: new Set() };
+
+    // Expand exactly the way skuStatus.buildIndex does, and in the same DIRECTION —
+    // the alias is inserted into the TRACKER's spelling ("9mm" -> "9 mm") so it can meet
+    // the form's. Applying it to the form's label instead finds nothing, because that
+    // side already has the space and alias() only ever inserts one.
+    const n = norm(item.name);
+    byGroup[g].direct.add(n);
+    const spaced = alias(n);
+    if (spaced) byGroup[g].aliased.add(spaced);
+  }
+  return byGroup;
+}
+
+// Every product the form can put in front of a patient should resolve to a tracker row,
+// otherwise that patient silently gets no backorder warning.
+//
+// Two severities, because they need different responses. A product with NO row under any
+// spelling is a hole — hard fail. A product that resolves only after inserting a space
+// into "9mm" is already handled at runtime by skuStatus.alias, so it is a warning that
+// names the fix rather than a build break.
+function compareSku(label, group, offered, rows) {
+  const have = rows[group];
+  const problems = [];
+  const warnings = [];
+
+  if (!have) {
+    problems.push(
+      `tracker has no group named ${JSON.stringify(group)} — every ${label} status is missing. ` +
+        "If the group was renamed, update GROUPS in skuStatus.js to match."
+    );
+    return { problems, warnings };
+  }
+
+  for (const product of offered) {
+    const n = norm(product);
+    if (have.direct.has(n)) continue;
+
+    if (have.aliased.has(n)) {
+      warnings.push(
+        `tracker spells ${JSON.stringify(product)} without the space in its cannula size. ` +
+          "skuStatus.alias covers it, but rename the tracker item to match and the alias " +
+          "becomes dead code (check skuwatch.js keys on the SKU column first)"
+      );
+      continue;
+    }
+
+    const why = NO_SKU_ROW[product];
+    if (why) console.log(`  note: ${label} ${JSON.stringify(product)} has no tracker row — ${why}`);
+    else problems.push(`${JSON.stringify(product)} has no tracker row — patients on it get no stock status`);
+  }
+  return { problems, warnings };
 }
 
 function compare(slot, offered, board) {
@@ -144,14 +229,40 @@ async function main() {
     total += problems.length;
   }
 
+  // ─── Cardinal SKU Tracker coverage ───
+  // Drift here does not break a save the way a Subscription label mismatch does — it
+  // costs the patient their backorder warning instead, which fails quietly in the other
+  // direction: the reorder goes through for something that cannot ship.
+  console.log("\nCardinal SKU Tracker coverage:");
+  const rows = await fetchSkuRows(token);
+  let warnCount = 0;
+  const checks = [
+    ["infusion set 1", GROUPS.INFUSION_SETS, form.set1],
+    ["infusion set 2", GROUPS.INFUSION_SETS, form.set2],
+    ["sensors", GROUPS.SENSORS, board.sensors],
+    ["cartridges", GROUPS.CARTRIDGES, board.supplies],
+  ];
+  for (const [label, group, offered] of checks) {
+    const { problems, warnings } = compareSku(label, group, offered, rows);
+    const covered = offered.length - problems.length - warnings.length;
+    console.log(`  ${label}: ${covered}/${offered.length} resolve to a tracker row`);
+    for (const w of warnings) console.log(`  WARN ${label} ${w}`);
+    for (const p of problems) console.log(`  ${label} ${p}`);
+    total += problems.length;
+    warnCount += warnings.length;
+  }
+
   if (total > 0) {
     console.error(
-      "\nFAIL: the form's infusion-set options have drifted from the board. " +
-        "Every mismatch above is a save the patient cannot complete."
+      "\nFAIL: the form has drifted from the boards. Subscription mismatches are saves " +
+        "the patient cannot complete; tracker gaps are backorder warnings they never see."
     );
     process.exit(1);
   }
-  console.log("\nOK: every option the form offers is a live board label.");
+  console.log(
+    `\nOK: every option the form offers is a live board label` +
+      (warnCount > 0 ? `, with ${warnCount} tracker spelling warning(s) above.` : ".")
+  );
 }
 
 if (require.main === module) {
@@ -161,4 +272,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { norm, loadFormMaps, compare, INTENTIONALLY_NOT_OFFERED };
+module.exports = { norm, loadFormMaps, compare, compareSku, INTENTIONALLY_NOT_OFFERED, NO_SKU_ROW };
