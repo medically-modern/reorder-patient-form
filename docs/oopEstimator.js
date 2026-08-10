@@ -86,9 +86,14 @@ const PRIMARY_MEDICAID_LABELS = new Set([
   "United Medicaid",
 ]);
 
-// Medicare A&B: patient always pays $0 OOP (MM bills Medicare directly)
+// Payers where the patient always owes $0. These plans leave no member cost
+// share on the items we resupply, so any deductible/coinsurance Stedi reports
+// would quote a charge that never actually reaches the patient.
+//   Medicare A&B   — MM bills Medicare directly.
+//   Aetna Medicare — fully covered, no cost share (MM-1071).
 const ZERO_OOP_PAYERS = new Set([
   "Medicare A&B",
+  "Aetna Medicare",
 ]);
 
 // ─── Coinsurance overrides (source: insurance_rules.py) ──────────────────────
