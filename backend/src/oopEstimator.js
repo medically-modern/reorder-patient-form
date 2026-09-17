@@ -12,7 +12,9 @@
  * for Medicare-style supplies, 1 pump, 1 monitor).
  *
  * Coinsurance overrides (insurance_rules.py) are applied here so
- * Humana = 0% just works. Medicare/United Medicare use real Stedi coinsurance
+ * Humana = 0% just works. Payers that leave no member cost share at all
+ * (Medicare A&B, Aetna Medicare, United Medicare) short-circuit to $0 via
+ * ZERO_OOP_PAYERS. Any other Medicare-style plan uses real Stedi coinsurance
  * unless secondary is Medicaid (then $0 OOP).
  */
 
@@ -89,18 +91,22 @@ const PRIMARY_MEDICAID_LABELS = new Set([
 // Payers where the patient always owes $0. These plans leave no member cost
 // share on the items we resupply, so any deductible/coinsurance Stedi reports
 // would quote a charge that never actually reaches the patient.
-//   Medicare A&B   — MM bills Medicare directly.
-//   Aetna Medicare — fully covered, no cost share (MM-1071).
+//   Medicare A&B    — MM bills Medicare directly.
+//   Aetna Medicare  — fully covered, no cost share (MM-1071).
+//   United Medicare — fully covered, no cost share.
 const ZERO_OOP_PAYERS = new Set([
   "Medicare A&B",
   "Aetna Medicare",
+  "United Medicare",
 ]);
 
 // ─── Coinsurance overrides (source: insurance_rules.py) ──────────────────────
-// NOTE: Removed Medicare A&B and United Medicare from blanket 0% override.
-// Those were a shortcut assuming dual-eligible (Medicaid secondary). Now we
-// check secondary explicitly. If no Medicaid secondary, Medicare patients
-// use real Stedi coinsurance (typically 20% for Part B DME).
+// NOTE: Medicare A&B and United Medicare no longer sit here. They are not a
+// dual-eligible shortcut — they are in ZERO_OOP_PAYERS above, which also clears
+// the remaining deductible and holds even when Stedi returns no benefits data.
+// A 0% entry here would do neither. Medicare-style plans that are NOT in that
+// set use real Stedi coinsurance (typically 20% for Part B DME) unless the
+// secondary is Medicaid, which is checked explicitly.
 
 const COINSURANCE_OVERRIDES = {
   // Humana removed — now handled per-product (0% CGM, Stedi% pump/supplies)
