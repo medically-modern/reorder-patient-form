@@ -11,6 +11,27 @@
  * assumptions (3 sensor units, sets×10 for commercial supplies, fixed 13+30
  * for Medicare-style supplies, 1 pump, 1 monitor).
  *
+ * ⚠ THIS FILE IS ONE OF FOUR COPIES OF THE SAME PAYER POLICY, AND THEY ARE
+ * CHECKED AGAINST EACH OTHER. The canonical list of zero-OOP payers, coinsurance
+ * overrides, rate schedule and the Medicaid/Medicare-style sets lives in
+ *   medically-modern/command-center-test → src/lib/shared/payerPolicy.json
+ * and that repo's scripts/check-payer-policy.mjs reads THIS file and fails when
+ * the two disagree (on its CI, and weekdays at 13:10 UTC). The other copies are
+ * command-center-test's welcomeCall/oopEstimator.ts and profile/oopEstimate.ts,
+ * coins-form-payment's src/lib/oopEstimator.ts, and this file's twin in the other
+ * directory of this repo — backend/src and docs/ are byte-identical mirrors apart
+ * from the module.exports line, and the check enforces that too.
+ *
+ * So: change a payer HERE and you must change it THERE, or CI goes red naming
+ * this file. A difference that is deliberate goes in that JSON under this
+ * consumer's `deviations` with a reason, not left to be rediscovered. This is
+ * what stopped Aetna Medicare (Aug 2026) and NYSHIP (Sep 2026) each being fixed
+ * in one place and quoting real patients real money in another.
+ *
+ * The Python originals (claim_assumptions.py, insurance_rules.py in
+ * medicallymodern1/stedi-monday-integration) are in a different GitHub org and
+ * are checked by NOBODY — sync those by hand and say so.
+ *
  * Coinsurance overrides (insurance_rules.py) are applied here so
  * Humana = 0% just works. Payers that leave no member cost share at all
  * (Medicare A&B, Aetna Medicare, United Medicare) short-circuit to $0 via
