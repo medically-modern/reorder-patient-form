@@ -94,10 +94,14 @@ const PRIMARY_MEDICAID_LABELS = new Set([
 //   Medicare A&B    — MM bills Medicare directly.
 //   Aetna Medicare  — fully covered, no cost share (MM-1071).
 //   United Medicare — fully covered, no cost share.
+//   NYSHIP          — Empire Plan covers DME in full, no patient cost share.
+//                     command-center has carried NYSHIP here since before this
+//                     port was taken; the port dropped it. Restored.
 const ZERO_OOP_PAYERS = new Set([
   "Medicare A&B",
   "Aetna Medicare",
   "United Medicare",
+  "NYSHIP",
 ]);
 
 // ─── Coinsurance overrides (source: insurance_rules.py) ──────────────────────
