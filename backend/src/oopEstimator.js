@@ -34,9 +34,9 @@
  *
  * Coinsurance overrides (insurance_rules.py) are applied here so
  * Humana = 0% just works. Payers that leave no member cost share at all
- * (Medicare A&B, Aetna Medicare, United Medicare) short-circuit to $0 via
- * ZERO_OOP_PAYERS. Any other Medicare-style plan uses real Stedi coinsurance
- * unless secondary is Medicaid (then $0 OOP).
+ * (Medicare A&B, Aetna Medicare, United Medicare, Cigna Medicare)
+ * short-circuit to $0 via ZERO_OOP_PAYERS. Any other Medicare-style plan uses
+ * real Stedi coinsurance unless secondary is Medicaid (then $0 OOP).
  */
 
 // ─── Rate Schedule (source: claim_assumptions.py PAYER_RATE_SCHEDULE) ────────
@@ -60,6 +60,11 @@ const PAYER_RATE_SCHEDULE = {
   "Wellcare": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: 241.97, sensor_rate: 229.13 },
   "Humana": { pump_rate: 5431.0, infusion_rate: 16.37, cartridge_rate: 2.20, monitor_rate: 295.36, sensor_rate: 317.97 },
   "Cigna": { pump_rate: 4200.0, infusion_rate: 17.75, cartridge_rate: 2.36, monitor_rate: 214.05, sensor_rate: 170.42 },
+  // Cigna Medicare (HealthSpring Medicare Advantage, added 2026-09-24). Infusion
+  // and cartridge are the A4224/A4225 allowables from a paid 9/15/26 ERA; pump,
+  // monitor and sensor are copied from "Cigna" and unverified. A $0-OOP payer
+  // (ZERO_OOP_PAYERS below), so these never change what the patient owes.
+  "Cigna Medicare": { pump_rate: 4200.0, infusion_rate: 25.87, cartridge_rate: 3.47, monitor_rate: 214.05, sensor_rate: 170.42 },
   "Midlands Choice": { pump_rate: 5644.0, infusion_rate: 31.68, cartridge_rate: 3.96, monitor_rate: 331.40, sensor_rate: 349.77 },
   "Horizon BCBS": { pump_rate: 4300.0, infusion_rate: 10.90, cartridge_rate: 3.10, monitor_rate: 480.0, sensor_rate: 445.0 },
   // Fidelis NJ (added 2026-09-16). No negotiated rates on file yet, so every
@@ -81,7 +86,7 @@ const PAYER_RATE_SCHEDULE = {
 
 const MEDICARE_STYLE_INFUSION_PAYERS = new Set([
   "Anthem BCBS Medicare", "Fidelis Medicare", "Medicare A&B", "NYSHIP",
-  "United Medicare", "Wellcare", "Humana", "Cigna", "Midlands Choice",
+  "United Medicare", "Wellcare", "Humana", "Cigna", "Cigna Medicare", "Midlands Choice",
 ]);
 
 // Aetna uses Group C codes (A4231/A4232) — same units as commercial (sets×10)
@@ -120,6 +125,7 @@ const PRIMARY_MEDICAID_LABELS = new Set([
 //   Medicare A&B    — MM bills Medicare directly.
 //   Aetna Medicare  — fully covered, no cost share (MM-1071).
 //   United Medicare — fully covered, no cost share.
+//   Cigna Medicare  — HealthSpring MA, $0 like United/Aetna Medicare (2026-09-24).
 //   NYSHIP          — Empire Plan covers DME in full, no patient cost share.
 //                     command-center has carried NYSHIP here since before this
 //                     port was taken; the port dropped it. Restored.
@@ -127,6 +133,7 @@ const ZERO_OOP_PAYERS = new Set([
   "Medicare A&B",
   "Aetna Medicare",
   "United Medicare",
+  "Cigna Medicare",
   "NYSHIP",
 ]);
 
