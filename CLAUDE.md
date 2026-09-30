@@ -33,7 +33,7 @@ change than it looks.
 ## 2. ⚠️ `backend/src/oopEstimator.js` and `docs/oopEstimator.js` are BYTE-IDENTICAL MIRRORS
 
 Apart from the trailing `module.exports = { estimateOop };` on the backend copy. The backend uses
-it to write the estimate to Monday at link-creation time; the browser uses it to render the card
+it to write the estimate to Monday at link creation and whenever an input changes (§3); the browser uses it to render the card
 live. **Edit one, edit the other**, and diff them before committing.
 
 **They are also two of four copies of the same payer policy across three repos**, and those copies
@@ -69,9 +69,10 @@ the contract, and IDs are what survive a rename on Monday. Notable ones:
 
 - `DAYS_TO_ORDER` `color_mkxmtv9c` — the cron's trigger; it looks for the literal **"20 Days"**.
 - `REORDER_TOKEN` / `REORDER_LINK` / `REORDER_TEXT_SENT` — the link and the send-once stamp.
-- `OOP_ESTIMATE` `text_mm404p7d` — written once, at link creation. **A SNAPSHOT, not live.** The
-  form recomputes in the browser, so this column can disagree with what the patient sees until the
-  next link is generated. Backfill it by hand if a policy change matters retroactively.
+- `OOP_ESTIMATE` `text_mm404p7d` — written at link creation **and again whenever one of its inputs
+  changes** (since 2026-09-30; before that it froze at link creation and went stale when insurance
+  changed). See "OOP estimate refresh" below. A **payer-policy** change is not an input change —
+  after editing `oopEstimator.js`, run the backfill so existing rows pick it up.
 - `PATIENT_ORDER_RESPONSE` `color_mm3kjykc` — Confirm=0 / Delay=1 / Cancel=2 (`ORDER_RESPONSE_INDEX`).
 
 ⚠️ **Status columns are written by INDEX, and Monday assigns those indexes itself** — it takes the
@@ -81,6 +82,29 @@ in `monday.js` reads them from the live board for this reason; `backend/src/chec
 (`npm run check:labels`) audits them. **Never infer an index.**
 
 ⚠️ **Patients are routed by Monday `itemId`, NOT by UID** (commit `f47556c`). UID is display only.
+
+### OOP estimate refresh
+
+`OOP_INPUT_COLUMNS` (`config.js`) lists the 10 columns the estimate reads: primary/secondary
+insurance, sensors type, supplies type, infusion set 1, infusion qty 1 and 2, and the three Stedi
+benefit columns (deductible remaining, coinsurance %, OOP max remaining). A Monday webhook on each
+calls `POST /webhooks/monday/oop-inputs?key=<OOP_WEBHOOK_SECRET>`; the row is re-read and
+`OOP_ESTIMATE` rewritten ~20s later, only if the text changed (queue `reorder-oop-refresh`).
+
+- ⚠️ **It keys off the benefit values landing, never off Calculate Financials or Run Check.** One
+  Stedi check writes Calculate Financials' results ~3.6s after Run Check and the benefits ~5.6s
+  after — anything triggered by Calculate Financials reads the old benefits. Last Eligibility Check
+  is not usable either: it is date-only and a second check the same day does not change it.
+- ⚠️ **`OOP_WEBHOOK_SECRET` unset = feature off** (route 503s, `/health` says `oopWebhook: disabled`).
+  Railway variable only — this repo is public.
+- ⚠️ **The webhooks live on the board, not in this repo.** `npm run check:oop-webhooks` fails if any
+  input column has none (`-- --create` with `OOP_WEBHOOK_URL` adds them). Adding an input to the
+  estimate means adding it to `OOP_INPUT_COLUMNS` *and* creating its webhook. Never watch
+  `OOP_ESTIMATE` itself.
+- It deliberately does **not** use `reorder-monday-writes` (patient submissions, link creation) —
+  its own queue, 30 rows/min, so a backfill can never delay a patient's save.
+- Backfill / one row by hand: `POST /admin/refresh-oop-estimates` with `x-api-key: ADMIN_API_KEY`;
+  body `{}` for every row (queued behind live work), `{"itemId":"…"}` for one row now.
 
 ---
 
@@ -97,9 +121,10 @@ assuming a quiet run means quiet code.
 ⚠️ **Replica-safe by a Redis leader lock** — only one replica runs the cron. Patients already
 carrying `REORDER_TEXT_SENT` are skipped, so a re-run does not double-text.
 
-Four BullMQ queues (`backend/src/queue.js`): `reorder-monday-writes`, `reorder-patient-process`,
-`reorder-confirmation-sms`, `reorder-sms-verify`. The last one re-reads RingCentral ~10 minutes
-later to confirm messages actually went out — **an accepted SMS is not a delivered SMS**.
+Five BullMQ queues (`backend/src/queue.js`): `reorder-monday-writes`, `reorder-patient-process`,
+`reorder-confirmation-sms`, `reorder-sms-verify`, and `reorder-oop-refresh` (§3). `reorder-sms-verify`
+re-reads RingCentral ~10 minutes later to confirm messages actually went out — **an accepted SMS is
+not a delivered SMS**.
 
 ---
 
@@ -157,7 +182,7 @@ than **48 hours** is treated as untrustworthy rather than shown as fact.
 |---|---|
 | A patient's OOP estimate looks wrong | `backend/src/oopEstimator.js` (+ its `docs/` mirror) — and §2: the canonical list is in another repo |
 | A payer is $0 on one screen and charged on another | §2. Run command-center-test's `node scripts/check-payer-policy.mjs` |
-| The Monday `OOP Estimate` column disagrees with the form | §3 — the column is a link-creation snapshot, the form is live |
+| The Monday `OOP Estimate` column disagrees with the form | §3 "OOP estimate refresh" — `/health` `oopWebhook`, `npm run check:oop-webhooks`, then `POST /admin/refresh-oop-estimates {"itemId":…}` |
 | Nobody got a text / everybody got a text | `backend/src/cron.js`, then `PRODUCTION_SMS_ENABLED` |
 | A text says it sent but didn't arrive | the `reorder-sms-verify` queue in `backend/src/queue.js` |
 | A status write silently did nothing | §3 — wrong label index, dropped at HTTP 200. `npm run check:labels` |

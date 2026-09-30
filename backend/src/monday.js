@@ -1,10 +1,11 @@
 const {
   SUBSCRIPTION_BOARD_ID,
   COLUMNS,
+  OOP_INPUT_COLUMNS,
   ORDER_RESPONSE_INDEX,
   INSURANCE_RESPONSE_INDEX,
 } = require("./config");
-const { enqueueWriteAndWait, startWorker, startReorderWorker, startSmsWorker, startSmsVerifyWorker } = require("./queue");
+const { enqueueWriteAndWait, startWorker, startReorderWorker, startSmsWorker, startSmsVerifyWorker, startOopRefreshWorker } = require("./queue");
 const { notifyMondayError } = require("./notify");
 const { estimateOop } = require("./oopEstimator");
 
@@ -783,40 +784,7 @@ async function storeTokenInMonday(itemIdArg, token, link) {
   ];
 
   try {
-    const subscription = col(COLUMNS.SUBSCRIPTION);
-    const primaryIns = col(COLUMNS.PRIMARY_INS);
-
-    const isServing = (val) => val && val !== "Not Serving" && val.trim() !== "";
-    const hasCgm = isServing(col(COLUMNS.SENSORS_TYPE));
-    const hasPump = isServing(col(COLUMNS.SUPPLIES_TYPE)) || isServing(col(COLUMNS.INFUSION_SET_1));
-    let serving = "";
-    if (hasCgm && hasPump) serving = "CGM & Pump & Supplies";
-    else if (hasCgm) serving = "CGM";
-    else if (hasPump) serving = "Pump & Supplies";
-
-    const infQty1 = parseInt(col(COLUMNS.INF_QTY_1), 10) || 0;
-    const infQty2 = parseInt(col(COLUMNS.INF_QTY_2), 10) || 0;
-    const infusionSets = (infQty1 + infQty2) || 3;
-
-    const est = estimateOop({
-      primaryInsurance: primaryIns,
-      secondaryInsurance: col(COLUMNS.SECONDARY_INS) || "",
-      serving,
-      infusionSets,
-      deductibleRemaining: col(COLUMNS.DEDUCTIBLE_REMAINING) || "",
-      stediCoinsurance: col(COLUMNS.STEDI_COINSURANCE) || "",
-      oopMaxRemaining: col(COLUMNS.OOP_MAX_REMAINING) || "",
-    });
-
-    let oopText;
-    if (est.ok && est.canCalculateCosts) {
-      oopText = `$${est.patientOwes.toFixed(2)}`;
-    } else if (est.ok && est.medicaidCovers) {
-      oopText = "$0.00";
-    } else {
-      oopText = est.ok ? "Incomplete benefits data" : (est.reason || "N/A");
-    }
-
+    const oopText = computeOopEstimateText(col);
     writes.push(writeText(itemId, COLUMNS.OOP_ESTIMATE, oopText));
     console.log(`[monday] OOP estimate for item ${itemId}: ${oopText}`);
   } catch (err) {
@@ -826,6 +794,112 @@ async function storeTokenInMonday(itemIdArg, token, link) {
 
   await Promise.all(writes);
   console.log(`[monday] Reorder token stored for item ${itemId}`);
+}
+
+// ─── OOP estimate ───
+// The text written to OOP_ESTIMATE, from a row's column text (`col(id)` → string).
+// Shared by link creation (storeTokenInMonday) and the input-change refresh
+// (refreshOopEstimate) so the two can never compute differently. Reads only
+// OOP_INPUT_COLUMNS (config.js) — a new input here needs a webhook there too.
+function computeOopEstimateText(col) {
+  const primaryIns = col(COLUMNS.PRIMARY_INS);
+
+  const isServing = (val) => val && val !== "Not Serving" && val.trim() !== "";
+  const hasCgm = isServing(col(COLUMNS.SENSORS_TYPE));
+  const hasPump = isServing(col(COLUMNS.SUPPLIES_TYPE)) || isServing(col(COLUMNS.INFUSION_SET_1));
+  let serving = "";
+  if (hasCgm && hasPump) serving = "CGM & Pump & Supplies";
+  else if (hasCgm) serving = "CGM";
+  else if (hasPump) serving = "Pump & Supplies";
+
+  const infQty1 = parseInt(col(COLUMNS.INF_QTY_1), 10) || 0;
+  const infQty2 = parseInt(col(COLUMNS.INF_QTY_2), 10) || 0;
+  const infusionSets = (infQty1 + infQty2) || 3;
+
+  const est = estimateOop({
+    primaryInsurance: primaryIns,
+    secondaryInsurance: col(COLUMNS.SECONDARY_INS) || "",
+    serving,
+    infusionSets,
+    deductibleRemaining: col(COLUMNS.DEDUCTIBLE_REMAINING) || "",
+    stediCoinsurance: col(COLUMNS.STEDI_COINSURANCE) || "",
+    oopMaxRemaining: col(COLUMNS.OOP_MAX_REMAINING) || "",
+  });
+
+  if (est.ok && est.canCalculateCosts) {
+    return `$${est.patientOwes.toFixed(2)}`;
+  } else if (est.ok && est.medicaidCovers) {
+    return "$0.00";
+  }
+  return est.ok ? "Incomplete benefits data" : (est.reason || "N/A");
+}
+
+// Recompute one row's OOP_ESTIMATE from its current Monday values. Called by the
+// reorder-oop-refresh worker (queue.js) after an input column changes, and by the
+// backfill. Writes only when the text differs, so a re-check that returns the same
+// benefits leaves the column (and its activity log) alone.
+//
+// Deliberately bypasses the shared reorder-monday-writes queue: that queue carries
+// patient submissions and link creation at 1 write/sec, and a board-wide backfill
+// must never sit in front of them. This worker has its own rate limit instead.
+async function refreshOopEstimate(itemIdArg) {
+  const safeId = validateNumericId(itemIdArg, "item ID");
+  const ids = [...OOP_INPUT_COLUMNS, COLUMNS.OOP_ESTIMATE].map(validateColumnId);
+
+  const data = await mondayQuery(`{
+    items(ids: [${safeId}]) {
+      id state board { id }
+      column_values(ids: [${ids.map((id) => `"${id}"`).join(", ")}]) { id text }
+    }
+  }`);
+
+  const item = data.items?.[0];
+  if (!item) return { itemId: safeId, skipped: "not found" };
+  if (String(item.board?.id) !== SUBSCRIPTION_BOARD_ID) return { itemId: safeId, skipped: "not on subscription board" };
+  if (item.state !== "active") return { itemId: safeId, skipped: `item ${item.state}` };
+
+  const col = (id) => {
+    const c = item.column_values.find((cv) => cv.id === id);
+    return c?.text || "";
+  };
+
+  let oopText;
+  try {
+    oopText = computeOopEstimateText(col);
+  } catch (err) {
+    // Same fallback link creation writes, so both paths leave the same text.
+    console.warn(`[oop-refresh] OOP estimate failed for item ${safeId}: ${err.message}`);
+    oopText = "Error: " + err.message;
+  }
+
+  const previous = col(COLUMNS.OOP_ESTIMATE);
+  if (previous === oopText) return { itemId: safeId, changed: false, oopText };
+
+  await mondayQuery(WRITE_MUTATION, {
+    boardId: SUBSCRIPTION_BOARD_ID, itemId: safeId, columnId: COLUMNS.OOP_ESTIMATE, value: JSON.stringify(oopText),
+  });
+  return { itemId: safeId, changed: true, previous, oopText };
+}
+
+// Every item ID on the Subscription Board, for the one-off backfill.
+async function getAllSubscriptionItemIds() {
+  const safeBoard = validateNumericId(SUBSCRIPTION_BOARD_ID, "board ID");
+  const ids = [];
+
+  const first = await mondayQuery(`{ boards(ids: [${safeBoard}]) { items_page(limit: 500) { cursor items { id } } } }`);
+  let page = first.boards?.[0]?.items_page;
+  ids.push(...(page?.items || []).map((i) => i.id));
+  let cursor = page?.cursor || null;
+
+  while (cursor) {
+    await new Promise((r) => setTimeout(r, 500));
+    const next = await mondayQuery(`query ($cursor: String!) { next_items_page(limit: 500, cursor: $cursor) { cursor items { id } } }`, { cursor });
+    page = next.next_items_page;
+    ids.push(...(page?.items || []).map((i) => i.id));
+    cursor = page?.cursor || null;
+  }
+
+  return ids;
 }
 
 // ─── Query patients where Days to Order = "20 days out" ───
@@ -978,6 +1052,11 @@ function initWriteQueue() {
   } catch (err) {
     console.warn("[monday] SMS verify worker unavailable:", err.message);
   }
+  try {
+    startOopRefreshWorker();
+  } catch (err) {
+    console.warn("[monday] OOP refresh worker unavailable:", err.message);
+  }
 }
 
 module.exports = {
@@ -991,6 +1070,9 @@ module.exports = {
   uploadFileToMonday,
   writeHelpMessage,
   storeTokenInMonday,
+  computeOopEstimateText,
+  refreshOopEstimate,
+  getAllSubscriptionItemIds,
   lookupTokenInMonday,
   getStatusIndexMap,
   resolveStatusIndex,

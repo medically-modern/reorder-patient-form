@@ -492,12 +492,107 @@ async function enqueueSmsBatchVerification(sentMessages, delayMs = 10 * 60 * 100
   return job.id;
 }
 
+// ─── OOP Estimate Refresh Queue ───
+// Recomputes a row's OOP_ESTIMATE after one of its inputs changes (Monday webhook →
+// POST /webhooks/monday/oop-inputs), and for the one-off backfill.
+//
+// Why a delay: one eligibility check writes the benefit columns within ~200ms of
+// each other, and each write is its own webhook. Jobs are keyed by row and 10s
+// bucket and run 20s after the first event in the bucket, so a burst collapses to
+// one recompute, and that recompute reads the row after the burst has landed —
+// never mid-check (Calculate Financials, by contrast, fires before the benefits are
+// written). Every event is followed by a read that starts at least 10s after it:
+// a job in the same bucket has not started yet (20s delay > 10s bucket), and an
+// event that arrives while a job runs lands in a later bucket and gets its own job.
+//
+// Kept apart from reorder-monday-writes on purpose — that queue serialises patient
+// submissions and link creation, and this one must never delay them. Its limiter is
+// global across replicas. Webhook jobs carry no priority, so BullMQ takes them ahead
+// of backfill jobs (which do).
+
+const OOP_REFRESH_DELAY_MS = 20_000;
+const OOP_REFRESH_BUCKET_MS = 10_000;
+const OOP_BACKFILL_PRIORITY = 10;
+
+const oopRefreshQueue = new Queue("reorder-oop-refresh", {
+  connection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 10_000 },
+    removeOnComplete: { count: 500 },
+    removeOnFail: { count: 200 },
+  },
+});
+
+let _oopRefreshWorker = null;
+
+function startOopRefreshWorker() {
+  const { refreshOopEstimate } = require("./monday");
+
+  _oopRefreshWorker = new Worker(
+    "reorder-oop-refresh",
+    async (job) => {
+      const result = await refreshOopEstimate(job.data.itemId);
+      if (result.skipped) {
+        console.log(`[oop-refresh] Item ${result.itemId} skipped (${result.skipped}) — ${job.data.source}`);
+      } else if (result.changed) {
+        console.log(`[oop-refresh] Item ${result.itemId}: "${result.previous}" → "${result.oopText}" — ${job.data.source}`);
+      }
+      return result;
+    },
+    {
+      connection,
+      concurrency: 1,
+      limiter: {
+        max: 30,         // ≤30 rows/min: one read + at most one write each
+        duration: 60_000,
+      },
+    }
+  );
+
+  _oopRefreshWorker.on("failed", (job, err) => {
+    if (job.attemptsMade >= job.opts.attempts) {
+      console.error(`[oop-refresh] DEAD LETTER — item ${job.data.itemId} failed after ${job.attemptsMade} attempts: ${err.message}`);
+    }
+  });
+
+  _oopRefreshWorker.on("error", (err) => {
+    console.error("[oop-refresh] Worker error:", err.message);
+  });
+
+  console.log("[oop-refresh] OOP estimate refresh worker ready (30/min rate limit)");
+}
+
+// One input column on one row changed. Returns the job ID (existing one if this
+// event fell into a bucket that already has a pending job).
+async function enqueueOopRefresh(itemId, source) {
+  const bucket = Math.floor(Date.now() / OOP_REFRESH_BUCKET_MS);
+  const job = await oopRefreshQueue.add(
+    "refresh-oop",
+    { itemId: String(itemId), source },
+    { jobId: `oop-${itemId}-${bucket}`, delay: OOP_REFRESH_DELAY_MS }
+  );
+  return job.id;
+}
+
+// Recompute every given row, behind any webhook-triggered work.
+async function enqueueOopBackfill(itemIds, runId) {
+  const jobs = itemIds.map((itemId) => ({
+    name: "refresh-oop",
+    data: { itemId: String(itemId), source: `backfill ${runId}` },
+    opts: { jobId: `oop-${itemId}-backfill-${runId}`, priority: OOP_BACKFILL_PRIORITY },
+  }));
+  await oopRefreshQueue.addBulk(jobs);
+  return jobs.length;
+}
+
 function queueHealthCheck() {
   return {
     mondayWriter: _workerReady,
     reorderProcessor: !!_reorderWorker,
     smsWorker: !!_smsWorker,
     smsVerifyWorker: !!_smsVerifyWorker,
+    oopRefreshWorker: !!_oopRefreshWorker,
   };
 }
 
@@ -506,10 +601,12 @@ async function closeQueue() {
   if (_reorderWorker) await _reorderWorker.close();
   if (_smsWorker) await _smsWorker.close();
   if (_smsVerifyWorker) await _smsVerifyWorker.close();
+  if (_oopRefreshWorker) await _oopRefreshWorker.close();
   await mondayWriteQueue.close();
   await reorderQueue.close();
   await smsQueue.close();
   await smsVerifyQueue.close();
+  await oopRefreshQueue.close();
 }
 
 module.exports = {
@@ -518,6 +615,9 @@ module.exports = {
   startReorderWorker,
   startSmsWorker,
   startSmsVerifyWorker,
+  startOopRefreshWorker,
+  enqueueOopRefresh,
+  enqueueOopBackfill,
   enqueueWrite,
   enqueueWriteAndWait,
   enqueueReorderPatient,

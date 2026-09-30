@@ -67,7 +67,7 @@ const COLUMNS = {
   REORDER_LINK:               "text_mm3khve4",       // Text — reorder confirmation link
   INSURANCE_CARD:             "file_mm3knk5q",       // File — uploaded insurance card images
   REORDER_TEXT_SENT:          "text_mm3rzqks",       // Text — timestamp when reorder SMS was sent (cron dedup)
-  OOP_ESTIMATE:               "text_mm404p7d",       // Text — OOP estimate written on link creation
+  OOP_ESTIMATE:               "text_mm404p7d",       // Text — OOP estimate; written on link creation AND whenever an OOP_INPUT_COLUMNS value changes
 
   // Existing file columns
   CLINICALS_FILES:  "file_mkp0vm0a",                 // MN Docs / Clinicals files
@@ -85,6 +85,29 @@ const COLUMNS = {
   // Patient help message (from reorder form "Need a hand?" section)
   PATIENT_HELP_MSG: "long_text_mm3xnb6k",
 };
+
+// ─── OOP estimate inputs ───
+// Every column computeOopEstimateText() (monday.js) reads, and nothing else. A Monday
+// webhook on each of these calls POST /webhooks/monday/oop-inputs, which recomputes
+// OOP_ESTIMATE for that row — so the column follows eligibility checks (Stedi writes
+// the three benefit columns), insurance changes and product/quantity changes instead
+// of freezing at link creation.
+//
+// Keep this list, the estimate code and the board's webhooks in step:
+// `npm run check:oop-webhooks` reports any column here with no webhook. Never add
+// OOP_ESTIMATE itself — the refresh writes it, so a webhook on it would loop.
+const OOP_INPUT_COLUMNS = [
+  COLUMNS.PRIMARY_INS,
+  COLUMNS.SECONDARY_INS,
+  COLUMNS.SENSORS_TYPE,
+  COLUMNS.SUPPLIES_TYPE,
+  COLUMNS.INFUSION_SET_1,
+  COLUMNS.INF_QTY_1,
+  COLUMNS.INF_QTY_2,
+  COLUMNS.DEDUCTIBLE_REMAINING,
+  COLUMNS.STEDI_COINSURANCE,
+  COLUMNS.OOP_MAX_REMAINING,
+];
 
 // Status index maps for reorder-specific columns
 const ORDER_RESPONSE_INDEX = {
@@ -110,6 +133,7 @@ const AUTH = {
 module.exports = {
   SUBSCRIPTION_BOARD_ID,
   COLUMNS,
+  OOP_INPUT_COLUMNS,
   ORDER_RESPONSE_INDEX,
   INSURANCE_RESPONSE_INDEX,
   AUTH,

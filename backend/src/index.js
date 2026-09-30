@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -9,7 +10,7 @@ const { verifyReorderToken, generateReorderToken, requireAuth, logout, COOKIE_OP
 const {
   getPatientData, getPatientOrderDetails, processReorderSubmission, findPatientByPhone, findPatientByUid, getPatientItemById,
   writeHelpMessage, storeTokenInMonday, getStatusIndexMap, resolveStatusIndex, initWriteQueue, uploadFileToMonday,
-  mondayQuery,
+  mondayQuery, refreshOopEstimate, getAllSubscriptionItemIds,
 } = require("./monday");
 const { getProductStatus, toPatientMap, skuHealthCheck } = require("./skuStatus");
 const { sendSMS, buildConfirmationText, smsHealthCheck } = require("./sms");
@@ -18,10 +19,17 @@ const { queueHealthCheck } = require("./queue");
 const { startCron, checkAndProcessReorders } = require("./cron");
 const { notifySubmissionError, notifySmsError, notifyUnhandled, notifyError, notifyHealthCheck } = require("./notify");
 const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, deleteReorderToken, getIdempotencyResult, setIdempotencyResult, markSubmitted, hasSubmitted } = require("./redis");
-const { enqueueConfirmationSms } = require("./queue");
-const { COLUMNS } = require("./config");
+const { enqueueConfirmationSms, enqueueOopRefresh, enqueueOopBackfill } = require("./queue");
+const { COLUMNS, OOP_INPUT_COLUMNS, SUBSCRIPTION_BOARD_ID } = require("./config");
 
 const app = express();
+
+// Monday webhook for OOP estimate inputs. The secret rides in the URL (?key=) because
+// board webhooks created with a personal token carry no signature. It lives only in
+// the OOP_WEBHOOK_SECRET Railway variable — this repo is public. Unset disables the
+// route rather than leaving it open.
+const OOP_WEBHOOK_PATH = "/webhooks/monday/oop-inputs";
+const OOP_WEBHOOK_SECRET = process.env.OOP_WEBHOOK_SECRET || "";
 
 // ─── Multer for file uploads (insurance cards) ───
 const upload = multer({
@@ -75,7 +83,14 @@ app.set("trust proxy", 1);
 
 // ─── Rate limiters ───
 const redisStore = (prefix) => new RedisStore({ sendCommand: (...args) => redis.call(...args), prefix: `rl:reorder:${prefix}:` });
-const globalLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false, store: redisStore("global") });
+// The Monday webhook is exempt: it arrives from a handful of Monday IPs, one call per
+// changed column, so a batch eligibility check would blow a 60/min per-IP limit and
+// Monday would retry into it. That route authenticates by secret instead and does
+// nothing but enqueue a deduplicated job.
+const globalLimiter = rateLimit({
+  windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false, store: redisStore("global"),
+  skip: (req) => req.path === OOP_WEBHOOK_PATH,
+});
 const authLimiter = rateLimit({ windowMs: 60_000, max: 10, standardHeaders: true, legacyHeaders: false, store: redisStore("auth") });
 const apiLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false, store: redisStore("api") });
 
@@ -101,6 +116,9 @@ app.get("/health", async (req, res) => {
     // than none. That makes an outage look identical to "everything is in stock", so
     // its state has to be readable from outside.
     stock: skuHealthCheck(),
+    // The OOP estimate only follows eligibility checks while this is enabled; a
+    // missing secret otherwise looks exactly like a quiet day.
+    oopWebhook: OOP_WEBHOOK_SECRET ? "enabled" : "disabled (OOP_WEBHOOK_SECRET not set)",
     cron: "active",
     timestamp: new Date().toISOString(),
   });
@@ -285,6 +303,79 @@ app.post("/admin/trigger-reorder-check", async (req, res) => {
   } catch (err) {
     console.error("[admin] Manual reorder check failed:", err.message);
     res.status(500).json({ error: "Reorder check failed" });
+  }
+});
+
+// POST /admin/refresh-oop-estimates — recompute OOP_ESTIMATE from current Monday values
+//   { "itemId": "123" } → that one row, now; returns what it wrote
+//   {}                  → every row on the board, queued behind webhook work (backfill)
+app.post("/admin/refresh-oop-estimates", async (req, res) => {
+  try {
+    const apiKey = req.headers["x-api-key"];
+    if (apiKey !== process.env.ADMIN_API_KEY) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const itemId = req.body?.itemId;
+    if (itemId !== undefined) {
+      if (!/^\d+$/.test(String(itemId))) {
+        return res.status(400).json({ error: "itemId must be numeric" });
+      }
+      const result = await refreshOopEstimate(itemId);
+      return res.json({ success: true, result });
+    }
+
+    const itemIds = await getAllSubscriptionItemIds();
+    const runId = Date.now().toString();
+    const enqueued = await enqueueOopBackfill(itemIds, runId);
+    console.log(`[admin] OOP backfill ${runId}: ${enqueued} row(s) queued`);
+    res.json({ success: true, runId, enqueued });
+  } catch (err) {
+    console.error("[admin] OOP refresh failed:", err.message);
+    res.status(500).json({ error: "OOP refresh failed" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// MONDAY WEBHOOK — an OOP estimate input changed on a row
+// One Monday webhook per OOP_INPUT_COLUMNS entry points here. The payload is used
+// only for the row ID: the job re-reads the row from Monday before computing, so a
+// forged or stale event can at worst cause a recompute from real data.
+// ═══════════════════════════════════════════════════════
+
+function oopWebhookKeyMatches(key) {
+  const given = Buffer.from(String(key || ""));
+  const expected = Buffer.from(OOP_WEBHOOK_SECRET);
+  return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+}
+
+app.post(OOP_WEBHOOK_PATH, async (req, res) => {
+  if (!OOP_WEBHOOK_SECRET) {
+    return res.status(503).json({ error: "OOP webhook disabled" });
+  }
+  if (!oopWebhookKeyMatches(req.query.key)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  // Monday's one-time handshake when a webhook is created: echo the challenge.
+  if (req.body?.challenge) {
+    return res.json({ challenge: req.body.challenge });
+  }
+
+  const event = req.body?.event || {};
+  const itemId = String(event.pulseId || "");
+  if (String(event.boardId) !== SUBSCRIPTION_BOARD_ID || !OOP_INPUT_COLUMNS.includes(event.columnId) || !/^\d+$/.test(itemId)) {
+    // 200, not 4xx: Monday retries non-2xx, and this event will never be actionable.
+    return res.json({ ok: true, ignored: true });
+  }
+
+  try {
+    await enqueueOopRefresh(itemId, `webhook ${event.columnId}`);
+    res.json({ ok: true });
+  } catch (err) {
+    // 5xx so Monday redelivers — the enqueue is what we can't afford to lose.
+    console.error(`[oop-webhook] Enqueue failed for item ${itemId}: ${err.message}`);
+    res.status(500).json({ error: "Enqueue failed" });
   }
 });
 
