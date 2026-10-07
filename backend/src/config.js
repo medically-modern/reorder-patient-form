@@ -67,17 +67,40 @@ const COLUMNS = {
   REORDER_LINK:               "text_mm3khve4",       // Text — reorder confirmation link
   INSURANCE_CARD:             "file_mm3knk5q",       // File — uploaded insurance card images
   REORDER_TEXT_SENT:          "text_mm3rzqks",       // Text — timestamp when reorder SMS was sent (cron dedup)
-  OOP_ESTIMATE:               "text_mm404p7d",       // Text — OOP estimate; written on link creation AND whenever an OOP_INPUT_COLUMNS value changes
+  OOP_ESTIMATE:               "text_mm404p7d",       // Text — "OOP Estimate" = Recurring OOP (consumables, deductible treated as met).
+                                                     //   WRITTEN BY THE STEDI BACKEND, READ-ONLY HERE. This repo must never write it.
 
   // Existing file columns
   CLINICALS_FILES:  "file_mkp0vm0a",                 // MN Docs / Clinicals files
 
-  // Benefits / Stedi eligibility (used by OOP estimator)
-  DEDUCTIBLE:             "text_mm3gbped",       // Text — total deductible (display only)
-  DEDUCTIBLE_REMAINING:   "text_mm3g32ja",       // Text — deductible remaining (used in OOP math)
-  STEDI_COINSURANCE:      "text_mm3gphed",       // Text — coinsurance % from Stedi (used in OOP math)
-  OOP_MAX:                "text_mm3gh0q3",       // Text — total OOP max (display only)
-  OOP_MAX_REMAINING:      "text_mm3gs345",       // Text — OOP max remaining (used in OOP math)
+  // Legacy Stedi eligibility columns — the payer's raw format, display only. No math
+  // in this repo reads them any more (the Stedi backend resolves benefits itself).
+  DEDUCTIBLE:             "text_mm3gbped",       // Text — total deductible
+  DEDUCTIBLE_REMAINING:   "text_mm3g32ja",       // Text — deductible remaining
+  STEDI_COINSURANCE:      "text_mm3gphed",       // Text — coinsurance % from Stedi
+  OOP_MAX:                "text_mm3gh0q3",       // Text — total OOP max
+  OOP_MAX_REMAINING:      "text_mm3gs345",       // Text — OOP max remaining
+
+  // ─── Benefits snapshot — WRITTEN BY THE STEDI BACKEND (stedi-monday-integration) ───
+  // READ-ONLY here. Ids and value formats are the reader contract (CLAUDE.md §2); the
+  // same ids exist on Profile Send Off, except that this board's recurring estimate is
+  // the existing OOP_ESTIMATE column above. Blank = unknown — NEVER treat blank as 0.
+  BNF_COINS_CGM:    "text_bnf_coins_cgm",   // "15" = 15%, "15-35" = unresolved range, "" = unknown
+  BNF_COINS_DME:    "text_bnf_coins_dme",   // same (pump + supplies)
+  BNF_COPAY_CGM:    "text_bnf_copay_cgm",   // "10" = $10, "0-1000" = range, "" = none/unknown
+  BNF_COPAY_DME:    "text_bnf_copay_dme",   // same
+  BNF_CANDIDATES:   "text_bnf_candidates",  // audit text, display only
+  BNF_DED_USED:     "text_bnf_ded_used",    // dollars, "" = unknown
+  BNF_DED_LEVEL:    "text_bnf_ded_level",   // "IND" / "FAM (family_fallback)" / "IND (inferred_zero)" / "IND (derived)"
+  BNF_OOP_USED:     "text_bnf_oop_used",    // dollars, "" = unknown
+  BNF_OOP_LEVEL:    "text_bnf_oop_level",   // "IND" / "FAM" / ""
+  BNF_CONFIDENCE:   "color_bnf_confidence", // status — High / Medium / Low
+  BNF_FLAGS:        "dropdown_bnf_flags",   // dropdown — zero or more flag codes (benefitsFlags.json has the text)
+  BNF_REASONS:      "text_bnf_reasons",     // one decision per line, display only
+  BNF_VERSION:      "text_bnf_version",     // e.g. "br-2026.10.07.1"; BLANK = backend has not resolved this item yet
+  BNF_FIRST_WMON:   "text_bnf_first_wmon",  // OOP Est First Order (incl. monitor) — "$228.75" / "$228.75-$533.75" / "$0" / "Need benefits" / ""
+  BNF_OOP_NOTE:     "text_bnf_oop_note",    // why ($0 reason, what is missing)
+  BNF_OOP_LINES:    "text_bnf_oop_lines",   // per-line audit, " || "-joined
 
   // Portal notes
   PORTAL_NOTES:     "long_text_mm3evvzj",
@@ -86,17 +109,13 @@ const COLUMNS = {
   PATIENT_HELP_MSG: "long_text_mm3xnb6k",
 };
 
-// ─── OOP estimate inputs ───
-// Every column computeOopEstimateText() (monday.js) reads, and nothing else. A Monday
-// webhook on each of these calls POST /webhooks/monday/oop-inputs, which recomputes
-// OOP_ESTIMATE for that row — so the column follows eligibility checks (Stedi writes
-// the three benefit columns), insurance changes and product/quantity changes instead
-// of freezing at link creation.
-//
-// Keep this list, the estimate code and the board's webhooks in step:
-// `npm run check:oop-webhooks` reports any column here with no webhook. Never add
-// OOP_ESTIMATE itself — the refresh writes it, so a webhook on it would loop.
-const OOP_INPUT_COLUMNS = [
+// ─── Retired OOP webhook columns ───
+// Until 2026-10 this repo recomputed OOP_ESTIMATE itself whenever one of these columns
+// changed, via a Monday webhook per column → POST /webhooks/monday/oop-inputs. The
+// Stedi backend now owns that column, so the webhooks are retired: the route only
+// acknowledges them and `npm run check:oop-webhooks` lists any still on the board so
+// they can be deleted. This list exists only for that cleanup.
+const RETIRED_OOP_WEBHOOK_COLUMNS = [
   COLUMNS.PRIMARY_INS,
   COLUMNS.SECONDARY_INS,
   COLUMNS.SENSORS_TYPE,
@@ -108,6 +127,20 @@ const OOP_INPUT_COLUMNS = [
   COLUMNS.STEDI_COINSURANCE,
   COLUMNS.OOP_MAX_REMAINING,
 ];
+
+// ─── Stedi backend (owns the OOP math) ───
+// Read at call time, not at load, so tests can set the env and a missing variable
+// surfaces as a clean "not configured" rather than a half-built URL. Both are Railway
+// variables — this repo is public.
+const STEDI_BACKEND_TIMEOUT_MS = 6000;
+
+function stediBackendConfig() {
+  return {
+    url: (process.env.STEDI_BACKEND_URL || "").trim().replace(/\/+$/, ""),
+    adminKey: (process.env.STEDI_ADMIN_KEY || "").trim(),
+    timeoutMs: STEDI_BACKEND_TIMEOUT_MS,
+  };
+}
 
 // Status index maps for reorder-specific columns
 const ORDER_RESPONSE_INDEX = {
@@ -133,7 +166,9 @@ const AUTH = {
 module.exports = {
   SUBSCRIPTION_BOARD_ID,
   COLUMNS,
-  OOP_INPUT_COLUMNS,
+  RETIRED_OOP_WEBHOOK_COLUMNS,
+  STEDI_BACKEND_TIMEOUT_MS,
+  stediBackendConfig,
   ORDER_RESPONSE_INDEX,
   INSURANCE_RESPONSE_INDEX,
   AUTH,

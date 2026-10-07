@@ -1,450 +1,267 @@
 /**
- * oopEstimator.js — Out-of-Pocket Estimator (vanilla JS port)
+ * oopEstimator.js — out-of-pocket estimate READER.
  *
- * Exact port of command-center/src/lib/welcomeCall/oopEstimator.ts
+ * Until 2026-10 this file and docs/oopEstimator.js were byte-identical mirrors of an
+ * estimator: a rate table, a zero-OOP payer set, a Medicaid label set, the Humana split
+ * and the deductible / coinsurance / OOP-max arithmetic. All of that now lives in ONE
+ * place, the Stedi backend (medicallymodern1/stedi-monday-integration), which resolves
+ * benefits from the 271, applies every payer rule, and writes the result to Monday.
  *
- * Mirrors the backend's claim_assumptions.py PAYER_RATE_SCHEDULE and
- * financial_estimate_service.py math, then layers deductible + coinsurance
- * + OOP max math on top.
+ * This module only reads what the backend produced:
+ *   parseEstimateText(text)      — the estimate column's text → {kind, low, high, text}
+ *   readBenefitsSnapshot(col)    — the Subscription board's benefits columns → one object
+ *   fetchBackendEstimate(args)   — POST {STEDI_BACKEND_URL}/oop/estimate for a number the
+ *                                  backend did not pre-compute (the patient changed a quantity)
+ *   flagText(code)               — a flag code → its text, from the generated snapshot
  *
- * All rates are per-unit. Units-per-fill come from the backend's standard
- * assumptions (3 sensor units, sets×10 for commercial supplies, fixed 13+30
- * for Medicare-style supplies, 1 pump, 1 monitor).
- *
- * ⚠ THIS FILE IS ONE OF FOUR COPIES OF THE SAME PAYER POLICY, AND THEY ARE
- * CHECKED AGAINST EACH OTHER. The canonical list of zero-OOP payers, coinsurance
- * overrides, rate schedule and the Medicaid/Medicare-style sets lives in
- *   medically-modern/command-center-test → src/lib/shared/payerPolicy.json
- * and that repo's scripts/check-payer-policy.mjs reads THIS file and fails when
- * the two disagree (on its CI, and weekdays at 13:10 UTC). The other copies are
- * command-center-test's welcomeCall/oopEstimator.ts and profile/oopEstimate.ts,
- * coins-form-payment's src/lib/oopEstimator.ts, and this file's twin in the other
- * directory of this repo — backend/src and docs/ are byte-identical mirrors apart
- * from the module.exports line, and the check enforces that too.
- *
- * So: change a payer HERE and you must change it THERE, or CI goes red naming
- * this file. A difference that is deliberate goes in that JSON under this
- * consumer's `deviations` with a reason, not left to be rediscovered. This is
- * what stopped Aetna Medicare (Aug 2026) and NYSHIP (Sep 2026) each being fixed
- * in one place and quoting real patients real money in another.
- *
- * The Python originals (claim_assumptions.py, insurance_rules.py in
- * medicallymodern1/stedi-monday-integration) are in a different GitHub org and
- * are checked by NOBODY — sync those by hand and say so.
- *
- * Coinsurance overrides (insurance_rules.py) are applied here so
- * Humana = 0% just works. Payers that leave no member cost share at all
- * (Medicare A&B, Aetna Medicare, United Medicare, Cigna Medicare)
- * short-circuit to $0 via ZERO_OOP_PAYERS. Any other Medicare-style plan uses
- * real Stedi coinsurance unless secondary is Medicaid (then $0 OOP).
+ * NO rate table, NO payer set, NO arithmetic belongs here. test/noMath.test.js fails if any
+ * comes back. Patient-facing copy (what the form says next to the number) lives in
+ * docs/app.js; this module never invents a dollar figure — blank is blank, not $0.
  */
 
-// ─── Rate Schedule (source: claim_assumptions.py PAYER_RATE_SCHEDULE) ────────
+const { COLUMNS, stediBackendConfig } = require("./config");
+const FLAGS_SNAPSHOT = require("./benefitsFlags.json");
 
-const PAYER_RATE_SCHEDULE = {
-  "NYSHIP": { pump_rate: 4326.7, infusion_rate: 24.64, cartridge_rate: 3.30, monitor_rate: 298.7, sensor_rate: 315.26 },
-  "Anthem BCBS Commercial": { pump_rate: 4200.0, infusion_rate: 8.75, cartridge_rate: 2.95, monitor_rate: 400.0, sensor_rate: 375.0 },
-  "Anthem BCBS Medicare": { pump_rate: 4200.0, infusion_rate: 25.19, cartridge_rate: 3.38, monitor_rate: 267.92, sensor_rate: 255.0 },
-  "Anthem BCBS Medicaid (JLJ)": { pump_rate: 4200.0, infusion_rate: 8.75, cartridge_rate: 2.95, monitor_rate: null, sensor_rate: null },
-  "Anthem BCBS Low-Cost (JLJ)": { pump_rate: 4200.0, infusion_rate: 8.75, cartridge_rate: 2.95, monitor_rate: null, sensor_rate: null },
-  "Fidelis Commercial": { pump_rate: 4000, infusion_rate: 11.17, cartridge_rate: 2.65, monitor_rate: 193.97, sensor_rate: 218.09 },
-  "Fidelis Medicaid": { pump_rate: 4000, infusion_rate: 15.2, cartridge_rate: 3.61, monitor_rate: null, sensor_rate: null },
-  "Fidelis Medicare": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: 218.13 },
-  "Fidelis Low-Cost": { pump_rate: 4000, infusion_rate: 11.17, cartridge_rate: 2.65, monitor_rate: 193.97, sensor_rate: 218.09 },
-  "Medicare A&B": { pump_rate: 600.0, infusion_rate: 29.07, cartridge_rate: 3.62, monitor_rate: 322.63, sensor_rate: 318.00 },
-  "Medicaid": { pump_rate: 4440.0, infusion_rate: 15.2, cartridge_rate: 3.61, monitor_rate: null, sensor_rate: null },
-  "United Commercial": { pump_rate: null, infusion_rate: 6.97, cartridge_rate: 1.83, monitor_rate: 167.27, sensor_rate: 176.55 },
-  "United Medicare": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: 167.27, sensor_rate: 176.55 },
-  "Aetna Commercial": { pump_rate: 1597.0, infusion_rate: 23.51, cartridge_rate: 0.92, monitor_rate: 191.17, sensor_rate: 173.41 },
-  "Aetna Medicare": { pump_rate: 1597.0, infusion_rate: 23.51, cartridge_rate: 0.92, monitor_rate: 191.17, sensor_rate: 201.77 },
-  "Wellcare": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: 241.97, sensor_rate: 229.13 },
-  "Humana": { pump_rate: 5431.0, infusion_rate: 16.37, cartridge_rate: 2.20, monitor_rate: 295.36, sensor_rate: 317.97 },
-  "Cigna": { pump_rate: 4200.0, infusion_rate: 17.75, cartridge_rate: 2.36, monitor_rate: 214.05, sensor_rate: 170.42 },
-  // Cigna Medicare (HealthSpring Medicare Advantage, added 2026-09-24). Infusion
-  // and cartridge are the A4224/A4225 allowables from a paid 9/15/26 ERA; pump,
-  // monitor and sensor are copied from "Cigna" and unverified. A $0-OOP payer
-  // (ZERO_OOP_PAYERS below), so these never change what the patient owes.
-  "Cigna Medicare": { pump_rate: 4200.0, infusion_rate: 25.87, cartridge_rate: 3.47, monitor_rate: 214.05, sensor_rate: 170.42 },
-  "Midlands Choice": { pump_rate: 5644.0, infusion_rate: 31.68, cartridge_rate: 3.96, monitor_rate: 331.40, sensor_rate: 349.77 },
-  "Horizon BCBS": { pump_rate: 4300.0, infusion_rate: 10.90, cartridge_rate: 3.10, monitor_rate: 480.0, sensor_rate: 445.0 },
-  // Fidelis NJ (added 2026-09-16). No negotiated rates on file yet, so every
-  // rate is null and the estimator returns {ok:false} rather than a number
-  // built on another plan's rates — the same state 8 existing payers are in.
-  // Fill these in from the contract when we have it.
-  "Fidelis NJ": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
-  "BCBS TN": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
-  "BCBS FL": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
-  "BCBS WY": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
-  "United Medicaid": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
-  "United Low-Cost": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
-  "MagnaCare": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
-  "UMR": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
-  "Oregon Care": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
-};
+// ─── Estimate text ───
+// Formats the backend writes (reader contract): "$228.75", "$228.75-$533.75", "$0",
+// "$0.00", "Need benefits", "". Semantics:
+//   "$0"            a who-pays rule (Medicaid, QMB, zero-OOP payer, covering secondary) → kind "zero"
+//   "$0.00"         priced at zero (0% rows)                                            → kind "amount", 0
+//   "Need benefits" an input is unknown                                                 → kind "needBenefits"
+//   ""              the backend has not written this row yet                            → kind "unwritten"
+// Anything unrecognised ("Error: …", "N/A" from the retired estimator) is "unwritten" with
+// the raw text kept, so a caller can log it but never shows it as a number.
 
-// ─── Supply HCPC groups (determines unit calculation) ────────────────────────
+const MONEY_SRC = String.raw`\$?\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?`;
+const SINGLE_RE = new RegExp(`^${MONEY_SRC}$`);
+const RANGE_RE = new RegExp(`^${MONEY_SRC}\\s*(?:-|–|—|to)\\s*${MONEY_SRC}$`, "i");
 
-const MEDICARE_STYLE_INFUSION_PAYERS = new Set([
-  "Anthem BCBS Medicare", "Fidelis Medicare", "Medicare A&B", "NYSHIP",
-  "United Medicare", "Wellcare", "Humana", "Cigna", "Cigna Medicare", "Midlands Choice",
-]);
-
-// Aetna uses Group C codes (A4231/A4232) — same units as commercial (sets×10)
-// but different infusion HCPC than Group A (A4230). Matches backend SUPPLY_HCPC_MAP.
-const AETNA_STYLE_PAYERS = new Set([
-  "Aetna Commercial", "Aetna Medicare",
-]);
-
-// Medicaid supplies split — these payers bill supplies under "Medicaid" rates
-const SUPPLIES_ROUTE_TO_MEDICAID = new Set([
-  "Fidelis Medicaid", "Anthem BCBS Medicaid (JLJ)", "Medicaid",
-]);
-
-// ─── Secondary Medicaid detection ────────────────────────────────────────────
-
-function isSecondaryMedicaid(secondary) {
-  if (!secondary) return false;
-  const s = secondary.toLowerCase();
-  return s.includes("medicaid");
+function toMoney(whole, cents) {
+  const n = Number(`${String(whole).replace(/,/g, "")}.${(cents || "0").padEnd(2, "0")}`);
+  return Number.isFinite(n) ? n : null;
 }
 
-// ─── Primary Medicaid detection ──────────────────────────────────────────────
+function parseEstimateText(raw) {
+  const text = raw == null ? "" : String(raw).trim();
+  if (!text) return { kind: "unwritten", low: null, high: null, text: "" };
 
-const PRIMARY_MEDICAID_LABELS = new Set([
-  "Fidelis Medicaid",
-  "Anthem BCBS Medicaid (JLJ)",
-  "Anthem BCBS Low-Cost (JLJ)",
-  "Wellcare",
-  "Medicaid",
-  "United Medicaid",
-]);
+  if (/^need benefits$/i.test(text)) return { kind: "needBenefits", low: null, high: null, text };
+  if (/^\$\s*0$/.test(text)) return { kind: "zero", low: 0, high: 0, text };
 
-// Payers where the patient always owes $0. These plans leave no member cost
-// share on the items we resupply, so any deductible/coinsurance Stedi reports
-// would quote a charge that never actually reaches the patient.
-//   Medicare A&B    — MM bills Medicare directly.
-//   Aetna Medicare  — fully covered, no cost share (MM-1071).
-//   United Medicare — fully covered, no cost share.
-//   Cigna Medicare  — HealthSpring MA, $0 like United/Aetna Medicare (2026-09-24).
-//   NYSHIP          — Empire Plan covers DME in full, no patient cost share.
-//                     command-center has carried NYSHIP here since before this
-//                     port was taken; the port dropped it. Restored.
-const ZERO_OOP_PAYERS = new Set([
-  "Medicare A&B",
-  "Aetna Medicare",
-  "United Medicare",
-  "Cigna Medicare",
-  "NYSHIP",
-]);
-
-// ─── Coinsurance overrides (source: insurance_rules.py) ──────────────────────
-// NOTE: Medicare A&B and United Medicare no longer sit here. They are not a
-// dual-eligible shortcut — they are in ZERO_OOP_PAYERS above, which also clears
-// the remaining deductible and holds even when Stedi returns no benefits data.
-// A 0% entry here would do neither. Medicare-style plans that are NOT in that
-// set use real Stedi coinsurance (typically 20% for Part B DME) unless the
-// secondary is Medicaid, which is checked explicitly.
-
-const COINSURANCE_OVERRIDES = {
-  // Humana removed — now handled per-product (0% CGM, Stedi% pump/supplies)
-};
-
-// ─── Humana split coinsurance ───────────────────────────────────────────────
-// CGM products (monitor + sensors) = 0% coinsurance
-// Pump and supply products = real Stedi coinsurance
-const HUMANA_CGM_PRODUCTS = new Set(["CGM Sensors"]);
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function round2(n) {
-  return Math.round(n * 100) / 100;
-}
-
-function parseNumber(raw) {
-  if (!raw) return null;
-  const cleaned = raw.replace(/[$,%\s]/g, "").replace(/,/g, "");
-  const n = parseFloat(cleaned);
-  return isNaN(n) ? null : n;
-}
-
-/**
- * Resolve coinsurance %, applying overrides from insurance_rules.py.
- * Returns a whole-number percentage (e.g. 20 for 20%).
- */
-function resolveCoinsurance(primaryInsurance, stediRaw) {
-  const override = COINSURANCE_OVERRIDES[primaryInsurance];
-  if (override !== undefined) return override;
-
-  const val = parseNumber(stediRaw);
-  if (val === null) return 0;
-  // Stedi sometimes returns decimal (0.2) vs percentage (20)
-  return val < 1 ? val * 100 : val;
-}
-
-/**
- * Determine which products are in scope based on the "serving" field.
- * Returns { hasCgm, hasPump, hasSupplies }.
- */
-function servingToProducts(serving) {
-  const s = (serving || "").toLowerCase();
-  // Serving values: "CGM", "Pump & Supplies", "CGM & Pump & Supplies", "Supplies", etc.
-  const hasCgm = s.includes("cgm");
-  const hasPump = s.includes("pump");
-  const hasSupplies = s.includes("suppli") || s.includes("pump"); // pump always includes supplies
-  return { hasCgm, hasPump, hasSupplies };
-}
-
-// ─── Label aliases (source: financial_estimate_service.py) ───────────────────
-
-const PRIMARY_INSURANCE_ALIASES = {
-  "Magnacare": "MagnaCare",
-  "BCBS Wyoming": "BCBS WY",
-};
-
-function canonicalize(label) {
-  const trimmed = (label || "").trim();
-  return PRIMARY_INSURANCE_ALIASES[trimmed] || trimmed;
-}
-
-// ─── Main estimator ──────────────────────────────────────────────────────────
-
-/**
- * Estimate out-of-pocket costs for a patient's fill.
- *
- * @param {Object} inputs
- * @param {string} inputs.primaryInsurance
- * @param {string} inputs.secondaryInsurance
- * @param {string} inputs.serving — determines which products
- * @param {number} [inputs.infusionSets=3] — number of infusion sets
- * @param {string} inputs.deductibleRemaining — raw string from Monday
- * @param {string} inputs.stediCoinsurance — raw coinsurance % string
- * @param {string} inputs.oopMaxRemaining — raw OOP max remaining string
- * @returns {Object} OopEstimate or OopEstimateError
- */
-function estimateOop(inputs) {
-  const serving = inputs.serving;
-  const infusionSets = inputs.infusionSets || 3;
-  const primaryInsurance = canonicalize(inputs.primaryInsurance);
-
-  if (!primaryInsurance) {
-    return { ok: false, reason: "Missing primary insurance" };
-  }
-
-  const rates = PAYER_RATE_SCHEDULE[primaryInsurance];
-  if (!rates) {
-    return { ok: false, reason: 'No rate schedule for "' + primaryInsurance + '"' };
-  }
-
-  const { hasCgm, hasPump, hasSupplies } = servingToProducts(serving);
-  if (!hasCgm && !hasPump && !hasSupplies) {
-    return { ok: false, reason: 'Cannot determine products from serving: "' + serving + '"' };
-  }
-
-  // Build line items
-  const lines = [];
-
-  // --- CGM: Sensors only (3 units A4239) ---
-  // Monitor (E2103) and Pump (E0784) excluded — this is a reorder form,
-  // patients already have the hardware. Only consumables are estimated.
-  if (hasCgm) {
-    if (rates.sensor_rate !== null) {
-      lines.push({
-        product: "CGM Sensors",
-        hcpc: "A4239",
-        units: 3,
-        rate: rates.sensor_rate,
-        allowed: round2(3 * rates.sensor_rate),
-      });
+  const range = RANGE_RE.exec(text);
+  if (range) {
+    const low = toMoney(range[1], range[2]);
+    const high = toMoney(range[3], range[4]);
+    if (low !== null && high !== null) {
+      return { kind: "range", low: Math.min(low, high), high: Math.max(low, high), text };
     }
   }
 
-  // --- Supplies: infusion sets + cartridges ---
-  if (hasSupplies) {
-    // Apply Medicaid supplies split
-    const suppliesPayer = SUPPLIES_ROUTE_TO_MEDICAID.has(primaryInsurance)
-      ? "Medicaid"
-      : primaryInsurance;
-    const suppliesRates = PAYER_RATE_SCHEDULE[suppliesPayer];
-
-    if (suppliesRates) {
-      const isMedicareStyle = MEDICARE_STYLE_INFUSION_PAYERS.has(suppliesPayer);
-      const isAetnaStyle = AETNA_STYLE_PAYERS.has(suppliesPayer);
-      const infusionUnits = isMedicareStyle ? 13 : infusionSets * 10;
-      const cartridgeUnits = isMedicareStyle ? 30 : infusionSets * 10;
-      // Group B: A4224/A4225 (Medicare), Group C: A4231/A4232 (Aetna), Group A: A4230/A4232 (commercial)
-      const infusionCode = isMedicareStyle ? "A4224" : isAetnaStyle ? "A4231" : "A4230";
-      const cartridgeCode = isMedicareStyle ? "A4225" : "A4232";
-
-      if (suppliesRates.infusion_rate !== null) {
-        lines.push({
-          product: "Infusion Sets",
-          hcpc: infusionCode,
-          units: infusionUnits,
-          rate: suppliesRates.infusion_rate,
-          allowed: round2(infusionUnits * suppliesRates.infusion_rate),
-        });
-      }
-      if (suppliesRates.cartridge_rate !== null) {
-        lines.push({
-          product: "Cartridges",
-          hcpc: cartridgeCode,
-          units: cartridgeUnits,
-          rate: suppliesRates.cartridge_rate,
-          allowed: round2(cartridgeUnits * suppliesRates.cartridge_rate),
-        });
-      }
-    }
+  const single = SINGLE_RE.exec(text);
+  if (single) {
+    const n = toMoney(single[1], single[2]);
+    if (n !== null) return { kind: "amount", low: n, high: n, text };
   }
 
-  if (lines.length === 0) {
-    return { ok: false, reason: 'No rates available for "' + primaryInsurance + '" with serving "' + serving + '"' };
+  // Text the retired in-repo estimator used to write; still on rows the backend has not
+  // rewritten yet. "Incomplete benefits data" meant exactly what "Need benefits" means now.
+  if (/^incomplete benefits/i.test(text)) return { kind: "needBenefits", low: null, high: null, text };
+
+  return { kind: "unwritten", low: null, high: null, text };
+}
+
+// ─── Flags ───
+
+function flagText(code) {
+  const entry = FLAGS_SNAPSHOT.flags[code];
+  return entry ? entry.text : code;
+}
+
+function flagConfidence(code) {
+  const entry = FLAGS_SNAPSHOT.flags[code];
+  return entry ? entry.confidence : null;
+}
+
+// Monday's dropdown `text` is the selected labels joined by ", ". Codes are upper snake
+// case; anything else in the cell is kept verbatim so an unknown code still surfaces.
+function parseFlagCodes(text) {
+  if (text == null) return [];
+  const seen = new Set();
+  const out = [];
+  for (const part of String(text).split(/[,\n;]+/)) {
+    const code = part.trim();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    out.push(code);
   }
+  return out;
+}
 
-  const totalAllowed = round2(lines.reduce(function (sum, l) { return sum + l.allowed; }, 0));
+function normalizeConfidence(text) {
+  const t = (text == null ? "" : String(text)).trim().toLowerCase();
+  if (!t) return "";
+  const match = FLAGS_SNAPSHOT.confidence.find((c) => c.toLowerCase() === t);
+  return match || "";
+}
 
-  // --- Medicaid check: primary Medicaid plan OR secondary Medicaid → $0 OOP ---
-  const isPrimaryMedicaid = PRIMARY_MEDICAID_LABELS.has(primaryInsurance);
-  const hasSecondaryMedicaid = isSecondaryMedicaid(inputs.secondaryInsurance);
+// ─── Benefits snapshot ───
+// `source` is whatever shape the caller has for one Monday item: the `col(id) → text`
+// reader every monday.js function builds, an item's `column_values` array, or a plain
+// {columnId: text} object.
 
-  if (isPrimaryMedicaid || hasSecondaryMedicaid) {
-    const note = isPrimaryMedicaid
-      ? primaryInsurance + " is a Medicaid plan — no patient cost share"
-      : "Secondary " + inputs.secondaryInsurance + " covers remaining balance";
-    return {
-      ok: true,
-      lines: lines,
-      totalAllowed: totalAllowed,
-      appliedDeductible: 0,
-      postDeductible: totalAllowed,
-      coinsurancePct: 0,
-      patientCoinsurance: 0,
-      patientOwesRaw: 0,
-      oopMaxRemaining: null,
-      patientOwes: 0,
-      insurancePays: totalAllowed,
-      medicaidCovers: true,
-      medicaidNote: note,
-      canCalculateCosts: true,
-      missingFields: [],
-    };
+function toColumnReader(source) {
+  if (typeof source === "function") return (id) => source(id) ?? "";
+  if (Array.isArray(source)) {
+    const byId = new Map(source.map((c) => [c.id, c.text]));
+    return (id) => byId.get(id) ?? "";
   }
+  if (source && typeof source === "object") return (id) => source[id] ?? "";
+  return () => "";
+}
 
-  // Medicare A&B (and other zero-OOP payers): patient always pays $0
-  if (ZERO_OOP_PAYERS.has(primaryInsurance)) {
-    return {
-      ok: true,
-      lines: lines,
-      totalAllowed: totalAllowed,
-      appliedDeductible: 0,
-      postDeductible: totalAllowed,
-      coinsurancePct: 0,
-      patientCoinsurance: 0,
-      patientOwesRaw: 0,
-      oopMaxRemaining: null,
-      patientOwes: 0,
-      insurancePays: totalAllowed,
-      medicaidCovers: true,
-      medicaidNote: primaryInsurance + " — no patient cost share",
-      canCalculateCosts: true,
-      missingFields: [],
-    };
-  }
+function readBenefitsSnapshot(source) {
+  const col = toColumnReader(source);
+  const text = (id) => {
+    const v = col(id);
+    return v == null ? "" : String(v);
+  };
 
-  // --- OOP Math (non-Medicaid) ---
-  const hasCoinsuranceOverride = COINSURANCE_OVERRIDES[primaryInsurance] !== undefined;
-  const parsedDeductible = parseNumber(inputs.deductibleRemaining);
-  const parsedCoinsurance = parseNumber(inputs.stediCoinsurance);
-  const oopMaxRaw = parseNumber(inputs.oopMaxRemaining);
-
-  // Humana CGM-only: coinsurance is known (0%) even without Stedi data.
-  const isHumanaCgmOnly = primaryInsurance === "Humana" &&
-    lines.every(function (l) { return HUMANA_CGM_PRODUCTS.has(l.product); });
-
-  // Track which specific fields are missing for granular UI warnings
-  const missingFields = [];
-  if (parsedDeductible === null) missingFields.push("deductible");
-  if (parsedCoinsurance === null && !hasCoinsuranceOverride && !isHumanaCgmOnly) missingFields.push("coinsurance");
-  if (oopMaxRaw === null) missingFields.push("oopMax");
-
-  // Can we compute patient costs? Need BOTH deductible AND coinsurance.
-  const hasDeductible = parsedDeductible !== null;
-  const hasCoinsurance = parsedCoinsurance !== null || hasCoinsuranceOverride || isHumanaCgmOnly;
-  const canCalculateCosts = hasDeductible && hasCoinsurance;
-
-  const oopMaxRemaining = oopMaxRaw !== null ? oopMaxRaw : null;
-
-  if (!canCalculateCosts) {
-    return {
-      ok: true,
-      lines: lines,
-      totalAllowed: totalAllowed,
-      appliedDeductible: null,
-      postDeductible: null,
-      coinsurancePct: hasCoinsurance ? resolveCoinsurance(primaryInsurance, inputs.stediCoinsurance) : null,
-      patientCoinsurance: null,
-      patientOwesRaw: null,
-      oopMaxRemaining: oopMaxRemaining,
-      patientOwes: null,
-      insurancePays: null,
-      medicaidCovers: false,
-      medicaidNote: "",
-      canCalculateCosts: false,
-      missingFields: missingFields,
-    };
-  }
-
-  // Both deductible and coinsurance are known — safe to compute
-  const deductibleRemaining = parsedDeductible;
-  const coinsurancePct = resolveCoinsurance(primaryInsurance, inputs.stediCoinsurance);
-
-  const appliedDeductible = round2(Math.min(totalAllowed, Math.max(0, deductibleRemaining)));
-  const postDeductible = round2(totalAllowed - appliedDeductible);
-
-  // ─── Humana split coinsurance ─────────────────────────────────────────
-  var patientCoinsurance;
-  if (primaryInsurance === "Humana") {
-    const cgmAllowed = lines
-      .filter(function (l) { return HUMANA_CGM_PRODUCTS.has(l.product); })
-      .reduce(function (sum, l) { return sum + l.allowed; }, 0);
-    const nonCgmAllowed = totalAllowed - cgmAllowed;
-
-    const cgmProportion = totalAllowed > 0 ? cgmAllowed / totalAllowed : 0;
-    const cgmDed = round2(appliedDeductible * cgmProportion);
-    const nonCgmDed = round2(appliedDeductible - cgmDed);
-
-    const cgmPostDed = round2(cgmAllowed - cgmDed);
-    const nonCgmPostDed = round2(nonCgmAllowed - nonCgmDed);
-
-    const cgmCoins = 0;
-    const nonCgmCoins = round2(nonCgmPostDed * (coinsurancePct / 100));
-    patientCoinsurance = round2(cgmCoins + nonCgmCoins);
-  } else {
-    patientCoinsurance = round2(postDeductible * (coinsurancePct / 100));
-  }
-
-  const patientOwesRaw = round2(appliedDeductible + patientCoinsurance);
-  const patientOwes = oopMaxRemaining !== null
-    ? round2(Math.min(patientOwesRaw, Math.max(0, oopMaxRemaining)))
-    : patientOwesRaw;
-  const insurancePays = round2(totalAllowed - patientOwes);
+  const version = text(COLUMNS.BNF_VERSION).trim();
+  const flags = parseFlagCodes(text(COLUMNS.BNF_FLAGS));
 
   return {
-    ok: true,
-    lines: lines,
-    totalAllowed: totalAllowed,
-    appliedDeductible: appliedDeductible,
-    postDeductible: postDeductible,
-    coinsurancePct: coinsurancePct,
-    patientCoinsurance: patientCoinsurance,
-    oopMaxRemaining: oopMaxRemaining,
-    patientOwesRaw: patientOwesRaw,
-    patientOwes: patientOwes,
-    insurancePays: insurancePays,
-    medicaidCovers: false,
-    medicaidNote: "",
-    canCalculateCosts: true,
-    missingFields: missingFields,
+    recurring: parseEstimateText(text(COLUMNS.OOP_ESTIMATE)),
+    firstOrder: parseEstimateText(text(COLUMNS.BNF_FIRST_WMON)),
+    confidence: normalizeConfidence(text(COLUMNS.BNF_CONFIDENCE)),
+    flags,
+    flagText: flags.map(flagText),
+    note: text(COLUMNS.BNF_OOP_NOTE).trim(),
+    version,
+    // BLANK version = the backend has not resolved this item yet; every other column is
+    // then either blank or stale, and a reader must say "—", never $0.
+    present: version !== "",
   };
 }
 
-module.exports = { estimateOop };
+// "Need benefits" rows carry the missing inputs in the note as "missing: a, b".
+function missingFromNote(note) {
+  const m = /missing:\s*([^\n]+)/i.exec(note || "");
+  if (!m) return [];
+  return m[1].split(/[,;]+/).map((s) => s.trim()).filter(Boolean);
+}
+
+// ─── Backend call ───
+// POST {STEDI_BACKEND_URL}/oop/estimate  (header X-Admin-Key)
+//   {"board": "subscription", "item_id": "123", "infusion_sets": 6, "sensors_per_fill": 3}
+// The backend reads the row from Monday itself, so the only thing this call adds is the
+// quantity the patient is choosing on the form.
+//
+// Returns one of:
+//   { ok: true,  estimate: {low, high, text}, patientPaysNothing, zeroReason, confidence,
+//     flags, flagText, needsBenefits, snapshotPresent, primaryLabel, serving, raw }
+//   { ok: false, reason: "need benefits", needsBenefits: [...], confidence, flags, flagText,
+//     zeroReason, snapshotPresent, raw }     — the backend answered, but a money field is null
+//   { ok: false, reason: "...", unavailable: true }  — not configured / timeout / network /
+//     non-2xx / malformed; the caller should fall back to the Monday column
+//
+// `money` picks which estimate the caller wants; the reorder form shows consumables only,
+// so it reads `recurring` (deductible treated as met) — the same thing the Monday column holds.
+
+function normalizeMoney(field) {
+  if (!field || typeof field !== "object") return null;
+  const low = Number(field.low);
+  const high = Number(field.high);
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return null;
+  const text = field.text != null && String(field.text).trim() !== ""
+    ? String(field.text).trim()
+    : (low === high ? low.toFixed(2) : `${low.toFixed(2)}-${high.toFixed(2)}`);
+  return { low: Math.min(low, high), high: Math.max(low, high), text };
+}
+
+function stringList(v) {
+  return Array.isArray(v) ? v.map((x) => String(x)).filter(Boolean) : [];
+}
+
+async function fetchBackendEstimate({ itemId, infusionSets, sensorsPerFill, money = "recurring" } = {}, opts = {}) {
+  const cfg = { ...stediBackendConfig(), ...opts };
+  const doFetch = opts.fetch || globalThis.fetch;
+
+  if (!cfg.url || !cfg.adminKey) {
+    return { ok: false, reason: "not configured", unavailable: true };
+  }
+  if (!/^\d+$/.test(String(itemId || ""))) {
+    return { ok: false, reason: "invalid item id", unavailable: true };
+  }
+
+  const body = { board: "subscription", item_id: String(itemId) };
+  if (infusionSets != null && Number.isFinite(Number(infusionSets))) body.infusion_sets = Number(infusionSets);
+  if (sensorsPerFill != null && Number.isFinite(Number(sensorsPerFill))) body.sensors_per_fill = Number(sensorsPerFill);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
+
+  let res;
+  try {
+    res = await doFetch(`${cfg.url}/oop/estimate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Admin-Key": cfg.adminKey },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    const timedOut = err && (err.name === "AbortError" || err.name === "TimeoutError");
+    return { ok: false, reason: timedOut ? `timeout after ${cfg.timeoutMs}ms` : `unreachable: ${err && err.message}`, unavailable: true };
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!res || !res.ok) {
+    return { ok: false, reason: `http ${res ? res.status : "?"}`, unavailable: true };
+  }
+
+  let json;
+  try {
+    json = await res.json();
+  } catch {
+    return { ok: false, reason: "malformed response", unavailable: true };
+  }
+  if (!json || typeof json !== "object") {
+    return { ok: false, reason: "malformed response", unavailable: true };
+  }
+
+  const fieldName = { recurring: "recurring", firstOrder: "first_order", firstOrderNoMonitor: "first_order_no_monitor" }[money] || "recurring";
+  const flags = stringList(json.flags);
+  const common = {
+    confidence: normalizeConfidence(json.confidence),
+    flags,
+    flagText: stringList(json.flag_text).length === flags.length ? stringList(json.flag_text) : flags.map(flagText),
+    needsBenefits: stringList(json.needs_benefits),
+    zeroReason: json.zero_reason ? String(json.zero_reason) : "",
+    snapshotPresent: json.snapshot_present === true,
+    primaryLabel: json.primary_label ? String(json.primary_label) : "",
+    serving: json.serving ? String(json.serving) : "",
+    raw: json,
+  };
+
+  if (json.patient_pays_nothing === true) {
+    return { ok: true, estimate: { low: 0, high: 0, text: "$0" }, patientPaysNothing: true, ...common };
+  }
+
+  const estimate = normalizeMoney(json[fieldName]);
+  if (!estimate) {
+    return { ok: false, reason: "need benefits", patientPaysNothing: false, ...common };
+  }
+  return { ok: true, estimate, patientPaysNothing: false, ...common };
+}
+
+module.exports = {
+  parseEstimateText,
+  readBenefitsSnapshot,
+  fetchBackendEstimate,
+  parseFlagCodes,
+  flagText,
+  flagConfidence,
+  normalizeConfidence,
+  missingFromNote,
+  FLAGS_SNAPSHOT,
+};
