@@ -6,13 +6,13 @@
   ],
   "generatedFrom": {
     "repo": "medicallymodern1/stedi-monday-integration",
-    "sha": "c33fda8",
-    "at": "2026-10-07T03:08:57+00:00"
+    "sha": "46a39c6",
+    "at": "2026-10-07T12:47:27+00:00"
   },
   "versions": {
     "rules": "2026.10.07",
-    "resolver": "br-2026.10.07.2",
-    "estimate": "oop-2026.10.07.2",
+    "resolver": "br-2026.10.07.3",
+    "estimate": "oop-2026.10.07.3",
     "rates": "2026.10.07"
   },
   "confidence": [
@@ -176,6 +176,14 @@
     "DEDUCTIBLE_REMAINING_UNKNOWN": {
       "text": "Deductible total is known but the remaining is not reported \u2014 first order cannot be priced; recurring assumes it is met",
       "confidence": "Low"
+    },
+    "MEDICARE_SUPPLEMENT_UNKNOWN": {
+      "text": "Original Medicare \u2014 $0 if the patient has a Medigap supplement, the 20% figure if not; ask on the call and add the supplement as Secondary Insurance",
+      "confidence": "Medium"
+    },
+    "DEDUCTIBLE_APPLIES_ON_ZERO_BENEFIT": {
+      "text": "0% coinsurance on diabetic DME is claims-proven for this plan, but the plan deductible still applies \u2014 the first order is up to the deductible remaining",
+      "confidence": "Medium"
     }
   }
 }
