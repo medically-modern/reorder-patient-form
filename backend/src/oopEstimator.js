@@ -132,7 +132,8 @@ function readBenefitsSnapshot(source) {
   return {
     recurring: parseEstimateText(text(COLUMNS.OOP_ESTIMATE)),
     firstOrder: parseEstimateText(text(COLUMNS.BNF_FIRST_WMON)),
-    confidence: normalizeConfidence(text(COLUMNS.BNF_CONFIDENCE)),
+    // The estimate's own confidence (serving-aware) wins over the whole resolution's.
+    confidence: normalizeConfidence(text(COLUMNS.BNF_OOP_CONF)) || normalizeConfidence(text(COLUMNS.BNF_CONFIDENCE)),
     flags,
     flagText: flags.map(flagText),
     note: text(COLUMNS.BNF_OOP_NOTE).trim(),

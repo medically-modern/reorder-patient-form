@@ -789,7 +789,7 @@ async function storeTokenInMonday(itemIdArg, token, link) {
 async function getOopEstimateColumns(itemIdArg) {
   const safeId = validateNumericId(itemIdArg, "item ID");
   const ids = [
-    COLUMNS.OOP_ESTIMATE, COLUMNS.BNF_FIRST_WMON, COLUMNS.BNF_CONFIDENCE, COLUMNS.BNF_FLAGS,
+    COLUMNS.OOP_ESTIMATE, COLUMNS.BNF_FIRST_WMON, COLUMNS.BNF_CONFIDENCE, COLUMNS.BNF_OOP_CONF, COLUMNS.BNF_FLAGS,
     COLUMNS.BNF_OOP_NOTE, COLUMNS.BNF_VERSION,
   ].map(validateColumnId);
 

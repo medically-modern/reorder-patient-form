@@ -94,10 +94,11 @@ const COLUMNS = {
   BNF_DED_LEVEL:    "text_bnf_ded_level",   // "IND" / "FAM (family_fallback)" / "IND (inferred_zero)" / "IND (derived)"
   BNF_OOP_USED:     "text_bnf_oop_used",    // dollars, "" = unknown
   BNF_OOP_LEVEL:    "text_bnf_oop_level",   // "IND" / "FAM" / ""
-  BNF_CONFIDENCE:   "color_bnf_confidence", // status — High / Medium / Low
+  BNF_CONFIDENCE:   "color_bnf_confidence", // status — High / Medium / Low (the whole resolution's)
+  BNF_OOP_CONF:     "text_bnf_oop_conf",    // text — High / Medium / Low: the ESTIMATE's own, serving-aware; show this beside the figure (blank -> BNF_CONFIDENCE)
   BNF_FLAGS:        "dropdown_bnf_flags",   // dropdown — zero or more flag codes (benefitsFlags.json has the text)
   BNF_REASONS:      "text_bnf_reasons",     // one decision per line, display only
-  BNF_VERSION:      "text_bnf_version",     // e.g. "br-2026.10.07.1"; BLANK = backend has not resolved this item yet
+  BNF_VERSION:      "text_bnf_version",     // e.g. "br-2026.10.07.2"; BLANK = backend has not resolved this item yet
   BNF_FIRST_WMON:   "text_bnf_first_wmon",  // OOP Est First Order (incl. monitor) — "$228.75" / "$228.75-$533.75" / "$0" / "Need benefits" / ""
   BNF_OOP_NOTE:     "text_bnf_oop_note",    // why ($0 reason, what is missing)
   BNF_OOP_LINES:    "text_bnf_oop_lines",   // per-line audit, " || "-joined

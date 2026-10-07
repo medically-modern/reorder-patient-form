@@ -1,18 +1,18 @@
 {
   "$comment": [
     "GENERATED SNAPSHOT of stedi-monday-integration exports/payer_policy.json (`flags`, `versions`,",
-    "`valueFormats.confidence`) — do not hand-edit. Regenerate by copying those keys from a fresh",
+    "`valueFormats.confidence`) \u2014 do not hand-edit. Regenerate by copying those keys from a fresh",
     "export; the backend owns every flag code and its text, this file only carries the copy."
   ],
   "generatedFrom": {
     "repo": "medicallymodern1/stedi-monday-integration",
-    "sha": "ec8749b",
-    "at": "2026-10-07T00:41:21+00:00"
+    "sha": "c33fda8",
+    "at": "2026-10-07T03:08:57+00:00"
   },
   "versions": {
     "rules": "2026.10.07",
-    "resolver": "br-2026.10.07.1",
-    "estimate": "oop-2026.10.07.1",
+    "resolver": "br-2026.10.07.2",
+    "estimate": "oop-2026.10.07.2",
     "rates": "2026.10.07"
   },
   "confidence": [
@@ -21,93 +21,41 @@
     "Low"
   ],
   "flags": {
-    "BLUECARD_NO_DME_ROWS": {
-      "text": "Out-of-area Blue plan returned no DME cost-share rows; host plan must be called",
+    "TIER_UNVERIFIED": {
+      "text": "Plan has in-network tiers; which tier we are in is not verified \u2014 call the payer and add it to the tier rulebook",
       "confidence": "Low"
-    },
-    "CARVEOUT_ROW_IGNORED": {
-      "text": "271 rows for other devices (hearing aids, breast pumps, speech devices ...) were ignored",
-      "confidence": "Info"
     },
     "COINSURANCE_AMBIGUOUS": {
-      "text": "271 lists more than one in-network DME coinsurance and no rule picks one — range shown",
+      "text": "271 lists more than one in-network DME coinsurance and no rule picks one \u2014 range shown",
       "confidence": "Low"
     },
-    "COINSURANCE_MISSING": {
-      "text": "271 carries no usable coinsurance row",
+    "POS_UNVERIFIED": {
+      "text": "Payer splits DME cost share by place of service; the applicable row is not proven by claims yet \u2014 range shown",
       "confidence": "Low"
     },
     "COINSURANCE_PLAN_LEVEL": {
       "text": "No DME-specific coinsurance row; plan-level (medical) coinsurance used",
       "confidence": "Medium"
     },
-    "COMMERCIAL_SECONDARY_PRESENT": {
-      "text": "A commercial secondary was provided; coordination not modelled — primary share shown",
-      "confidence": "Medium"
-    },
-    "COPAY_AMBIGUOUS": {
-      "text": "271 lists several DME copays (item tiers) and nothing says which applies — shown as a range",
+    "COINSURANCE_MISSING": {
+      "text": "271 carries no usable coinsurance row",
       "confidence": "Low"
-    },
-    "COPAY_ONCE_PER_DOS": {
-      "text": "The plan charges its copay once per date of service, not per line",
-      "confidence": "Info"
-    },
-    "COPAY_PLAN": {
-      "text": "Plan charges a per-item copay in addition to / instead of coinsurance",
-      "confidence": "Info"
-    },
-    "COPAY_PROVIDER_TYPE_CONDITIONAL": {
-      "text": "The copay row is scoped to specific provider types; it may not apply to a DME supplier — shown as a range",
-      "confidence": "Info"
-    },
-    "COVERAGE_INACTIVE": {
-      "text": "271 reports inactive coverage — nothing here can price an order",
-      "confidence": "Low"
-    },
-    "DEDUCTIBLE_FAMILY_FALLBACK": {
-      "text": "No individual deductible row; family deductible used",
-      "confidence": "Medium"
     },
     "DEDUCTIBLE_INFERRED_ZERO": {
       "text": "No in-network deductible row at any level; $0 inferred because the plan reported coinsurance / OOP rows",
       "confidence": "Medium"
     },
+    "DEDUCTIBLE_FAMILY_FALLBACK": {
+      "text": "No individual deductible row; family deductible used",
+      "confidence": "Medium"
+    },
     "DEDUCTIBLE_MISSING": {
-      "text": "No deductible row and nothing to infer from — unknown",
+      "text": "No deductible row and nothing to infer from \u2014 unknown",
       "confidence": "Low"
     },
     "DEDUCTIBLE_REMAINING_DERIVED": {
       "text": "Deductible remaining derived from total minus year-to-date",
       "confidence": "Medium"
-    },
-    "DISCLAIMER_ROW_IGNORED": {
-      "text": "A 271 cost-share row carried disclaimer text and was ignored",
-      "confidence": "Info"
-    },
-    "DUAL_MEDICAID_RESPONSE": {
-      "text": "271 is the Medicaid-side answer for a dual; the MA plan's cost share is not visible here",
-      "confidence": "Low"
-    },
-    "EP_PUMP_UNVERIFIED": {
-      "text": "Essential Plan pump cost share has paid both $0 and the 5% row — range shown",
-      "confidence": "Info"
-    },
-    "HUMANA_GROUP_PLAN_UNVERIFIED": {
-      "text": "Humana employer-group plan — CGM carve-out not proven for this group; range shown, confirm by phone",
-      "confidence": "Low"
-    },
-    "LABEL_MISMATCH": {
-      "text": "The 271 identifies a different product than the Primary Insurance label on the board",
-      "confidence": "Info"
-    },
-    "MA_PLAN_RESPONSE_NEEDED": {
-      "text": "CMS 271 shows Medicare Advantage enrollment — Part B rows do not apply; cost share comes from the MA carrier's own 271",
-      "confidence": "Low"
-    },
-    "NO_BENEFIT_ROWS": {
-      "text": "271 carries no benefit rows — nothing to resolve",
-      "confidence": "Low"
     },
     "OOP_FAMILY_FALLBACK": {
       "text": "No individual OOP max row; family OOP max used",
@@ -117,45 +65,117 @@
       "text": "No in-network OOP max row",
       "confidence": "Medium"
     },
-    "OUT_OF_NETWORK_ONLY": {
-      "text": "Only out-of-network cost-share rows were returned",
+    "COPAY_PLAN": {
+      "text": "Plan charges a per-item copay in addition to / instead of coinsurance",
+      "confidence": "Info"
+    },
+    "SUPPLEMENT_PLAN_LETTER_UNCONFIRMED": {
+      "text": "Medicare Supplement on file \u2014 assumed to cover the balance; confirm the plan letter (K/L/HD pay less)",
+      "confidence": "Medium"
+    },
+    "COMMERCIAL_SECONDARY_PRESENT": {
+      "text": "A commercial secondary was provided; coordination not modelled \u2014 primary share shown",
+      "confidence": "Medium"
+    },
+    "DISCLAIMER_ROW_IGNORED": {
+      "text": "A 271 cost-share row carried disclaimer text and was ignored",
+      "confidence": "Info"
+    },
+    "CARVEOUT_ROW_IGNORED": {
+      "text": "271 rows for other devices (hearing aids, breast pumps, speech devices ...) were ignored",
+      "confidence": "Info"
+    },
+    "NO_BENEFIT_ROWS": {
+      "text": "271 carries no benefit rows \u2014 nothing to resolve",
+      "confidence": "Low"
+    },
+    "QMB": {
+      "text": "Qualified Medicare Beneficiary \u2014 patient cannot be billed",
+      "confidence": "Info"
+    },
+    "DUAL_MEDICAID_RESPONSE": {
+      "text": "271 is the Medicaid-side answer for a dual; the MA plan's cost share is not visible here",
       "confidence": "Low"
     },
     "PAYER_RULE_APPLIED": {
       "text": "A claim-proven payer rule overrode what the 271 said",
       "confidence": "Info"
     },
-    "POS_UNVERIFIED": {
-      "text": "Payer splits DME cost share by place of service; the applicable row is not proven by claims yet — range shown",
-      "confidence": "Low"
-    },
-    "PRIMARY_MEDICAID": {
-      "text": "Primary insurance is a Medicaid product — no patient cost share",
-      "confidence": "Info"
-    },
-    "QMB": {
-      "text": "Qualified Medicare Beneficiary — patient cannot be billed",
-      "confidence": "Info"
-    },
-    "SECONDARY_MEDICAID_COVERS": {
-      "text": "Secondary NY Medicaid covers the primary's cost share — patient pays $0",
-      "confidence": "Info"
-    },
-    "SUPPLEMENT_PLAN_LETTER_UNCONFIRMED": {
-      "text": "Medicare Supplement on file — assumed to cover the balance; confirm the plan letter (K/L/HD pay less)",
-      "confidence": "Medium"
-    },
-    "TIER_UNVERIFIED": {
-      "text": "Plan has in-network tiers; which tier we are in is not verified — call the payer and add it to the tier rulebook",
-      "confidence": "Low"
-    },
-    "UHC_COSTSHARE_UNVERIFIED": {
-      "text": "UnitedHealthcare/Oxford commercial — claims have contradicted the 271's DME cost share for this plan type; range shown, confirm by phone",
-      "confidence": "Low"
-    },
     "ZERO_OOP_PAYER": {
       "text": "Payer / label is a no-patient-cost-share rule",
       "confidence": "Info"
+    },
+    "PRIMARY_MEDICAID": {
+      "text": "Primary insurance is a Medicaid product \u2014 no patient cost share",
+      "confidence": "Info"
+    },
+    "OUT_OF_NETWORK_ONLY": {
+      "text": "Only out-of-network cost-share rows were returned",
+      "confidence": "Low"
+    },
+    "BLUECARD_NO_DME_ROWS": {
+      "text": "Out-of-area Blue plan returned no DME cost-share rows; host plan must be called",
+      "confidence": "Low"
+    },
+    "UHC_COSTSHARE_UNVERIFIED": {
+      "text": "UnitedHealthcare/Oxford commercial \u2014 claims have contradicted the 271's DME cost share for this plan type; range shown, confirm by phone",
+      "confidence": "Low"
+    },
+    "HUMANA_GROUP_PLAN_UNVERIFIED": {
+      "text": "Humana employer-group plan \u2014 CGM carve-out not proven for this group; range shown, confirm by phone",
+      "confidence": "Low"
+    },
+    "LABEL_MISMATCH": {
+      "text": "The 271 identifies a different product than the Primary Insurance label on the board",
+      "confidence": "Medium"
+    },
+    "MA_PLAN_RESPONSE_NEEDED": {
+      "text": "CMS 271 shows Medicare Advantage enrollment \u2014 Part B rows do not apply; cost share comes from the MA carrier's own 271",
+      "confidence": "Low"
+    },
+    "COVERAGE_INACTIVE": {
+      "text": "271 reports inactive coverage \u2014 nothing here can price an order",
+      "confidence": "Low"
+    },
+    "SECONDARY_MEDICAID_COVERS": {
+      "text": "Secondary NY Medicaid covers the primary's cost share \u2014 patient pays $0",
+      "confidence": "Info"
+    },
+    "COPAY_ONCE_PER_DOS": {
+      "text": "The plan charges its copay once per date of service, not per line",
+      "confidence": "Info"
+    },
+    "COPAY_PROVIDER_TYPE_CONDITIONAL": {
+      "text": "The copay row is scoped to specific provider types; it may not apply to a DME supplier \u2014 shown as a range",
+      "confidence": "Info"
+    },
+    "COPAY_AMBIGUOUS": {
+      "text": "271 lists several DME copays (item tiers) and nothing says which applies \u2014 shown as a range",
+      "confidence": "Low"
+    },
+    "EP_PUMP_UNVERIFIED": {
+      "text": "Essential Plan pump cost share has paid both $0 and the 5% row \u2014 range shown",
+      "confidence": "Medium"
+    },
+    "ZERO_OOP_RULE_UNPROVEN": {
+      "text": "The $0 business rule for this payer is not fully proven by claims (contradictions logged) \u2014 confirm before promising $0",
+      "confidence": "Medium"
+    },
+    "PAYER_RULE_UNPROVEN": {
+      "text": "A payer rule with Medium/Low claims evidence set this cost share \u2014 confirm by phone before quoting",
+      "confidence": "Medium"
+    },
+    "OOP_REMAINING_DERIVED": {
+      "text": "OOP max remaining derived from total minus year-to-date",
+      "confidence": "Medium"
+    },
+    "DUAL_PLAN_CONFIRM_SECONDARY": {
+      "text": "Plan text says Dual / D-SNP \u2014 the member likely has Medicaid secondary that covers the cost share; confirm Secondary Insurance before quoting",
+      "confidence": "Medium"
+    },
+    "DEDUCTIBLE_REMAINING_UNKNOWN": {
+      "text": "Deductible total is known but the remaining is not reported \u2014 first order cannot be priced; recurring assumes it is met",
+      "confidence": "Low"
     }
   }
 }

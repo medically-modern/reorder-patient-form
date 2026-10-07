@@ -19,6 +19,7 @@ test("column ids match the reader contract", () => {
   assert.equal(COLUMNS.OOP_ESTIMATE, "text_mm404p7d");        // Subscription board's Recurring OOP
   assert.equal(COLUMNS.BNF_FIRST_WMON, "text_bnf_first_wmon");
   assert.equal(COLUMNS.BNF_CONFIDENCE, "color_bnf_confidence");
+  assert.equal(COLUMNS.BNF_OOP_CONF, "text_bnf_oop_conf");
   assert.equal(COLUMNS.BNF_FLAGS, "dropdown_bnf_flags");
   assert.equal(COLUMNS.BNF_OOP_NOTE, "text_bnf_oop_note");
   assert.equal(COLUMNS.BNF_VERSION, "text_bnf_version");
@@ -87,6 +88,13 @@ test("'$0' recurring with a note is a who-pays zero, and the note is the reason"
   assert.equal(snap.recurring.kind, "zero");
   assert.match(snap.note, /Medicaid/);
   assert.deepEqual(snap.flagText, [FLAGS_SNAPSHOT.flags.PRIMARY_MEDICAID.text]);
+});
+
+test("the estimate's own confidence (OOP Est Confidence) wins over the resolution's", () => {
+  const snap = readBenefitsSnapshot({ ...RESOLVED_ROW, [COLUMNS.BNF_CONFIDENCE]: "Low", [COLUMNS.BNF_OOP_CONF]: "High" });
+  assert.equal(snap.confidence, "High");
+  const older = readBenefitsSnapshot({ ...RESOLVED_ROW, [COLUMNS.BNF_OOP_CONF]: "" });
+  assert.equal(older.confidence, "Medium");          // a row written before the column existed
 });
 
 test("flag codes: comma/newline separated, de-duplicated, unknown codes kept verbatim", () => {
