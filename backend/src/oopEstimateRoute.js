@@ -19,10 +19,14 @@
 //   text               "$228.75" | "$228.75–$533.75" | "$0" | "Need benefits" | ""
 //   low, high          numbers, or null when unknown
 //   patientPaysNothing true only for kind "zero" (a who-pays rule); never inferred from blank
-//   zeroReason         the backend's reason / the column note, for the "$0" line
-//   confidence         "High" | "Medium" | "Low" | ""
-//   flags, flagText    parallel arrays — codes and their text (benefitsFlags.json)
-//   needsBenefits      inputs the backend still needs (kind "needBenefits")
+//   zeroReason         ALWAYS "" on this public route (Brandon 2026-10-07: no internal
+//                      wording reaches a patient); the page shows its own sentence
+//   confidence         ALWAYS "" here — confidence, flags and the missing-input list are
+//   flags, flagText    rep-facing (Command Center); they are stripped before the response
+//   needsBenefits      leaves the server. Shape kept so the page's reader is unchanged.
+//   hidden             true when the figure must not be shown to the patient at all: an
+//                      internal-only payer (Horizon BCBS, patientVisible=false) or a check
+//                      that ran under the wrong payer. The page then hides the card.
 //   quantityAware      whether `text` reflects the quantity the form asked about
 //   present            whether the backend has resolved this row at all
 
@@ -73,8 +77,24 @@ function base(fields) {
     needsBenefits: [],
     quantityAware: false,
     present: false,
+    hidden: false,
     ...fields,
   };
+}
+
+// The patient sees a number, a range, "$0" or "we're still confirming" — never the
+// internal reasons, flags, confidence or the list of missing inputs (Brandon,
+// 2026-10-07: "don't show any flags to the patient yet"). Applied to EVERY response.
+const INTERNAL_FLAG_PREFIX_HIDDEN = new Set(["DO_NOT_SHARE_WITH_PATIENT", "WRONG_PAYER"]);
+
+function patientSafe(resp) {
+  const flags = Array.isArray(resp.flags) ? resp.flags : [];
+  const hidden = resp.hidden === true || flags.some((f) => INTERNAL_FLAG_PREFIX_HIDDEN.has(f));
+  const out = { ...resp, zeroReason: "", confidence: "", flags: [], flagText: [], needsBenefits: [] };
+  if (hidden) {
+    return { ...out, ok: false, hidden: true, kind: "hidden", text: "", low: null, high: null, patientPaysNothing: false };
+  }
+  return out;
 }
 
 function fromBackend(result) {
@@ -89,6 +109,9 @@ function fromBackend(result) {
     present: result.snapshotPresent === true,
   };
 
+  if (result.patientVisible === false || result.wrongPayer) {
+    return base({ ...common, hidden: true });
+  }
   if (result.ok && result.patientPaysNothing) {
     return base({ ...common, ok: true, kind: "zero", text: "$0", low: 0, high: 0, patientPaysNothing: true });
   }
@@ -129,18 +152,19 @@ function fromColumn(snapshot) {
 async function buildOopEstimateResponse({ itemId, infusionSets, fetchEstimate, readColumns, log = console }) {
   const backend = await fetchEstimate({ itemId, infusionSets });
   if (!backend.unavailable) {
-    return fromBackend(backend);
+    return patientSafe(fromBackend(backend));
   }
 
-  log.warn(`[oop-estimate] Stedi backend unavailable (${backend.reason}) — falling back to the OOP Estimate column for item ${itemId}`);
+  log.warn(`[oop-estimate] OOP estimator unavailable (${backend.reason}) — falling back to the OOP Estimate column for item ${itemId}`);
   const snapshot = await readColumns(itemId);
   if (!snapshot) return { notFound: true };
-  return fromColumn(snapshot);
+  return patientSafe(fromColumn(snapshot));
 }
 
 module.exports = {
   buildOopEstimateResponse,
   parseInfusionSetsParam,
   displayText,
+  patientSafe,
   MAX_INFUSION_SETS,
 };

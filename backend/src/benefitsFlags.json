@@ -1,19 +1,23 @@
 {
   "$comment": [
-    "GENERATED SNAPSHOT of stedi-monday-integration exports/payer_policy.json (`flags`, `versions`,",
-    "`valueFormats.confidence`) \u2014 do not hand-edit. Regenerate by copying those keys from a fresh",
-    "export; the backend owns every flag code and its text, this file only carries the copy."
+    "GENERATED from medically-modern/OOP-Cost-Estimator exports/payer_policy.json (scripts/export_payer_policy.py) \u2014 do not edit; replace from a fresh export.",
+    "Flag code -> text + confidence, and the confidence vocabulary. This form shows none of it to the patient (2026-10-07); kept for the server-side reader and logs."
   ],
   "generatedFrom": {
-    "repo": "medicallymodern1/stedi-monday-integration",
-    "sha": "46a39c6",
-    "at": "2026-10-07T12:47:27+00:00"
+    "repo": "medically-modern/OOP-Cost-Estimator",
+    "sha": "unknown",
+    "at": "2026-10-07T14:34:30+00:00",
+    "chargeSchedule": {
+      "repo": "medicallymodern1/stedi-monday-integration",
+      "sha": "69e05bd",
+      "at": "2026-10-07T14:29:30+00:00"
+    }
   },
   "versions": {
-    "rules": "2026.10.07",
-    "resolver": "br-2026.10.07.3",
-    "estimate": "oop-2026.10.07.3",
-    "rates": "2026.10.07"
+    "rules": "2026.10.08",
+    "resolver": "br-2026.10.08.1",
+    "estimate": "oop-2026.10.08.1",
+    "rates": "2026.10.08"
   },
   "confidence": [
     "High",
@@ -102,7 +106,7 @@
       "confidence": "Info"
     },
     "ZERO_OOP_PAYER": {
-      "text": "Payer / label is a no-patient-cost-share rule",
+      "text": "Payer / label is a 0% coinsurance payer by rule \u2014 priced after the plan deductible unless the deductible is proven waived",
       "confidence": "Info"
     },
     "PRIMARY_MEDICAID": {
@@ -178,11 +182,35 @@
       "confidence": "Low"
     },
     "MEDICARE_SUPPLEMENT_UNKNOWN": {
-      "text": "Original Medicare \u2014 $0 if the patient has a Medigap supplement, the 20% figure if not; ask on the call and add the supplement as Secondary Insurance",
+      "text": "Original Medicare \u2014 $0 if the patient has a Medigap supplement (plus any Part B deductible left on plans G/N), the 20% figure if not; ask on the call and add the supplement as Secondary Insurance",
       "confidence": "Medium"
     },
     "DEDUCTIBLE_APPLIES_ON_ZERO_BENEFIT": {
       "text": "0% coinsurance on diabetic DME is claims-proven for this plan, but the plan deductible still applies \u2014 the first order is up to the deductible remaining",
+      "confidence": "Medium"
+    },
+    "DEDUCTIBLE_ON_ZERO_UNKNOWN": {
+      "text": "The plan has deductible remaining and nothing proves whether it applies before the 0% / copay benefit \u2014 quoted as $0 up to the deductible; confirm on the benefits call",
+      "confidence": "Medium"
+    },
+    "DEDUCTIBLE_WAIVED_BY_271": {
+      "text": "The 271 says our lines are not subject to the deductible (a $0 DME deductible row or 'deductible does not apply') \u2014 priced without it",
+      "confidence": "Info"
+    },
+    "DEDUCTIBLE_DME_SPECIFIC": {
+      "text": "The 271 carries a DME-specific deductible \u2014 that accumulator is applied to our lines, not the plan-level one",
+      "confidence": "Info"
+    },
+    "WRONG_PAYER": {
+      "text": "This 271 shows the check ran under the wrong payer \u2014 re-run under the right one; no estimate until then",
+      "confidence": "Low"
+    },
+    "DO_NOT_SHARE_WITH_PATIENT": {
+      "text": "Internal figure only \u2014 do not share the out-of-pocket estimate with the patient (Horizon BCBS)",
+      "confidence": "Info"
+    },
+    "HUMANA_MONITOR_RATE_DISPUTED": {
+      "text": "Humana allowed $33.44 on the E2103 monitor in error (under dispute) \u2014 the monitor is quoted at 65-100% of the Medicare allowed until a corrected ERA arrives",
       "confidence": "Medium"
     }
   }

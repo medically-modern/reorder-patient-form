@@ -129,16 +129,18 @@ const RETIRED_OOP_WEBHOOK_COLUMNS = [
   COLUMNS.OOP_MAX_REMAINING,
 ];
 
-// ─── Stedi backend (owns the OOP math) ───
+// ─── OOP Cost Estimator (owns the OOP math) ───
 // Read at call time, not at load, so tests can set the env and a missing variable
 // surfaces as a clean "not configured" rather than a half-built URL. Both are Railway
 // variables — this repo is public.
 const STEDI_BACKEND_TIMEOUT_MS = 6000;
 
 function stediBackendConfig() {
+  // The OOP Cost Estimator (medically-modern/OOP-Cost-Estimator) since 2026-10-08;
+  // the old STEDI_BACKEND_* names still work so a Railway variable rename is not a cutover.
   return {
-    url: (process.env.STEDI_BACKEND_URL || "").trim().replace(/\/+$/, ""),
-    adminKey: (process.env.STEDI_ADMIN_KEY || "").trim(),
+    url: (process.env.OOP_ESTIMATOR_URL || process.env.STEDI_BACKEND_URL || "").trim().replace(/\/+$/, ""),
+    adminKey: (process.env.OOP_ESTIMATOR_KEY || process.env.STEDI_ADMIN_KEY || "").trim(),
     timeoutMs: STEDI_BACKEND_TIMEOUT_MS,
   };
 }

@@ -10,7 +10,7 @@
  * This module only reads what the backend produced:
  *   parseEstimateText(text)      — the estimate column's text → {kind, low, high, text}
  *   readBenefitsSnapshot(col)    — the Subscription board's benefits columns → one object
- *   fetchBackendEstimate(args)   — POST {STEDI_BACKEND_URL}/oop/estimate for a number the
+ *   fetchBackendEstimate(args)   — POST {OOP_ESTIMATOR_URL}/oop/estimate for a number the
  *                                  backend did not pre-compute (the patient changed a quantity)
  *   flagText(code)               — a flag code → its text, from the generated snapshot
  *
@@ -152,7 +152,7 @@ function missingFromNote(note) {
 }
 
 // ─── Backend call ───
-// POST {STEDI_BACKEND_URL}/oop/estimate  (header X-Admin-Key)
+// POST {OOP_ESTIMATOR_URL}/oop/estimate  (header X-Admin-Key)
 //   {"board": "subscription", "item_id": "123", "infusion_sets": 6, "sensors_per_fill": 3}
 // The backend reads the row from Monday itself, so the only thing this call adds is the
 // quantity the patient is choosing on the form.
@@ -240,6 +240,10 @@ async function fetchBackendEstimate({ itemId, infusionSets, sensorsPerFill, mone
     flagText: stringList(json.flag_text).length === flags.length ? stringList(json.flag_text) : flags.map(flagText),
     needsBenefits: stringList(json.needs_benefits),
     zeroReason: json.zero_reason ? String(json.zero_reason) : "",
+    // false = internal figure only (Horizon BCBS) — the patient-facing form hides the card.
+    patientVisible: json.patient_visible !== false,
+    // non-empty = the check ran under the wrong payer; there is no figure to show.
+    wrongPayer: json.wrong_payer ? String(json.wrong_payer) : "",
     snapshotPresent: json.snapshot_present === true,
     primaryLabel: json.primary_label ? String(json.primary_label) : "",
     serving: json.serving ? String(json.serving) : "",

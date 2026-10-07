@@ -42,13 +42,20 @@ contract (column ids, value formats, the `/oop/estimate` call, rendering rules) 
 
 - `backend/src/oopEstimator.js` is a reader module: `parseEstimateText(text)` for the formats the
   backend writes, `readBenefitsSnapshot(col)` for the benefits columns, `fetchBackendEstimate()`
-  for `POST {STEDI_BACKEND_URL}/oop/estimate` (header `X-Admin-Key`), 6s timeout, clean
+  for `POST {OOP_ESTIMATOR_URL}/oop/estimate` (header `X-Admin-Key`; the old `STEDI_BACKEND_URL` /
+  `STEDI_ADMIN_KEY` names still work), 6s timeout, clean
   `{ok:false, reason}` on failure. `docs/oopEstimator.js` is the browser copy of
   `parseEstimateText` only — plain script, no modules. They are no longer mirrors of each other
   and carry **no rate table, no payer set, no arithmetic**.
-- `backend/src/benefitsFlags.json` is a **generated snapshot** of the backend export
-  (`exports/payer_policy.json` → `flags`, `versions`): flag code → text + confidence. Never
-  hand-edit it; replace it from a fresh export.
+- `backend/src/benefitsFlags.json` is a **generated snapshot** of the OOP Cost Estimator's export
+  (medically-modern/OOP-Cost-Estimator `exports/payer_policy.json` → `flags`, `versions`): flag code →
+  text + confidence. Never hand-edit it; replace it from a fresh export.
+- ⚠️ **The patient sees a number, a range, `$0` or "we're still confirming" — nothing else** (Brandon,
+  2026-10-07: "don't show any flags to the patient"). `oopEstimateRoute.patientSafe` strips confidence,
+  flags, the internal `$0` reason and the missing-input tokens from EVERY `/api/oop-estimate` response, and
+  returns `hidden: true` (kind `hidden`, no figure) for an internal-only payer (`DO_NOT_SHARE_WITH_PATIENT`,
+  Horizon BCBS) or a check that ran under the wrong payer (`WRONG_PAYER`); `docs/app.js` hides the card.
+  The internal detail lives in the Command Center.
 - ⚠️ **`npm test` fails the build if any of it comes back.** `backend/test/noMath.test.js` scans
   `backend/src` and `docs/` for `PAYER_RATE_SCHEDULE`, `ZERO_OOP_PAYERS`, `PRIMARY_MEDICAID_LABELS`,
   `COINSURANCE_OVERRIDES`, any `new Set([...])` of payer labels, and any write to the OOP Estimate

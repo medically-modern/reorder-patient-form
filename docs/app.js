@@ -1058,7 +1058,9 @@ function getOopEstimate() {
 function renderOopEstimate(res) {
   const card = document.getElementById("oop-card");
   card.classList.remove("oop-updating");
-  if (!res || !res.ok) { card.style.display = "none"; return; }
+  // No figure to show: nothing written yet, or a figure the patient must not see
+  // (kind "hidden": internal-only payer / a check under the wrong payer).
+  if (!res || !res.ok || res.hidden || res.kind === "hidden") { card.style.display = "none"; return; }
   card.style.display = "";
 
   document.getElementById("oop-total").textContent = res.text || "—";
@@ -1073,10 +1075,9 @@ function renderOopEstimate(res) {
   const reasonEl = document.getElementById("oop-reason");
   let reason = "";
   if (res.kind === "zero") {
-    reason = res.zeroReason || "Your plan covers these supplies in full.";
+    reason = "Your plan covers these supplies in full.";
   } else if (res.kind === "needBenefits") {
     reason = "We're still confirming a few details with your insurance. We'll let you know before anything is charged.";
-    if (res.needsBenefits && res.needsBenefits.length) reason += ` (Still confirming: ${res.needsBenefits.join(", ")}.)`;
   } else if (res.kind === "range") {
     reason = "Your plan reports more than one possible rate, so this is a range.";
   }
@@ -1086,30 +1087,15 @@ function renderOopEstimate(res) {
   reasonEl.textContent = reason;
   reasonEl.classList.toggle("hidden", !reason);
 
-  // Confidence — always shown when the backend gave one
+  // Confidence, flags and the missing-input list are rep-facing (Command Center) and
+  // never shown here (Brandon, 2026-10-07). The server strips them; the page keeps the
+  // elements hidden so an old cached bundle cannot show them either.
   const confEl = document.getElementById("oop-confidence");
-  if (res.confidence) {
-    confEl.textContent = `Estimate confidence: ${res.confidence}`;
-    confEl.dataset.level = res.confidence.toLowerCase();
-    confEl.classList.remove("hidden");
-  } else {
-    confEl.textContent = "";
-    delete confEl.dataset.level;
-    confEl.classList.add("hidden");
-  }
-
-  // Flags — each flag's text, folded under "Why this estimate" so the card stays calm
+  if (confEl) { confEl.textContent = ""; delete confEl.dataset.level; confEl.classList.add("hidden"); }
   const details = document.getElementById("oop-details");
+  if (details) { details.classList.add("hidden"); details.open = false; }
   const list = document.getElementById("oop-flags");
-  list.innerHTML = "";
-  const texts = Array.isArray(res.flagText) ? res.flagText.filter(Boolean) : [];
-  for (const t of texts) {
-    const li = document.createElement("li");
-    li.textContent = t;
-    list.appendChild(li);
-  }
-  details.classList.toggle("hidden", texts.length === 0);
-  details.open = false;
+  if (list) list.innerHTML = "";
 }
 
 // ═══════════════════════════════════════════════════════

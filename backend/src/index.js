@@ -119,7 +119,7 @@ app.get("/health", async (req, res) => {
     // estimate, which is indistinguishable from a healthy service — so say so here.
     stediBackend: (() => {
       const cfg = stediBackendConfig();
-      return cfg.url && cfg.adminKey ? "configured" : "not configured (STEDI_BACKEND_URL / STEDI_ADMIN_KEY) — column fallback only";
+      return cfg.url && cfg.adminKey ? "configured" : "not configured (OOP_ESTIMATOR_URL / OOP_ESTIMATOR_KEY) — column fallback only";
     })(),
     oopWebhook: "retired (Stedi backend writes OOP Estimate)",
     cron: "active",

@@ -56,7 +56,7 @@ test("backend priced it → source backend, amount, quantity-aware, Monday not r
   assert.equal(res.low, 61.2);
   assert.equal(res.high, 61.2);
   assert.equal(res.patientPaysNothing, false);
-  assert.equal(res.confidence, "High");
+  assert.equal(res.confidence, "");                       // rep-facing — stripped from the public route
   assert.equal(res.quantityAware, true);
   assert.equal(res.present, true);
 });
@@ -72,9 +72,9 @@ test("backend range → '$low–$high' with the flag that caused it", async () =
   });
   assert.equal(res.kind, "range");
   assert.equal(res.text, "$61.20–$142.80");
-  assert.equal(res.confidence, "Low");
-  assert.deepEqual(res.flags, ["COINSURANCE_AMBIGUOUS"]);
-  assert.deepEqual(res.flagText, [FLAGS_SNAPSHOT.flags.COINSURANCE_AMBIGUOUS.text]);
+  assert.equal(res.confidence, "");
+  assert.deepEqual(res.flags, []);                           // flags never reach the patient (Brandon 2026-10-07)
+  assert.deepEqual(res.flagText, []);
 });
 
 test("backend says patient pays nothing → '$0' + zero reason", async () => {
@@ -90,7 +90,7 @@ test("backend says patient pays nothing → '$0' + zero reason", async () => {
   assert.equal(res.kind, "zero");
   assert.equal(res.text, "$0");
   assert.equal(res.patientPaysNothing, true);
-  assert.match(res.zeroReason, /cannot be billed/);
+  assert.equal(res.zeroReason, "");                        // the page says "Your plan covers these supplies in full."
 });
 
 test("backend answered 'need benefits' → rendered as such from the backend, NOT a column fallback", async () => {
@@ -108,8 +108,8 @@ test("backend answered 'need benefits' → rendered as such from the backend, NO
   assert.equal(res.text, "Need benefits");
   assert.equal(res.low, null);
   assert.equal(res.high, null);
-  assert.deepEqual(res.needsBenefits, ["coinsurance", "deductible"]);
-  assert.equal(res.confidence, "Low");
+  assert.deepEqual(res.needsBenefits, []);                   // internal tokens stay internal
+  assert.equal(res.confidence, "");
 });
 
 test("backend unreachable → falls back to the OOP Estimate column, source 'column', not quantity-aware", async () => {
@@ -131,8 +131,8 @@ test("backend unreachable → falls back to the OOP Estimate column, source 'col
   assert.equal(res.kind, "amount");
   assert.equal(res.text, "$61.20");
   assert.equal(res.low, 61.2);
-  assert.equal(res.confidence, "Medium");
-  assert.deepEqual(res.flagText, [FLAGS_SNAPSHOT.flags.COINSURANCE_PLAN_LEVEL.text]);
+  assert.equal(res.confidence, "");
+  assert.deepEqual(res.flagText, []);
   assert.equal(res.quantityAware, false);
   assert.equal(res.present, true);
   assert.equal(warnings.length, 1);
@@ -172,7 +172,7 @@ test("column fallback: '$0' is a who-pays zero and the note is the reason", asyn
   assert.equal(res.kind, "zero");
   assert.equal(res.text, "$0");
   assert.equal(res.patientPaysNothing, true);
-  assert.match(res.zeroReason, /Medicaid/);
+  assert.equal(res.zeroReason, "");
 });
 
 test("column fallback: 'Need benefits' carries the note's missing list", async () => {
@@ -186,7 +186,7 @@ test("column fallback: 'Need benefits' carries the note's missing list", async (
   });
   assert.equal(res.ok, true);
   assert.equal(res.kind, "needBenefits");
-  assert.deepEqual(res.needsBenefits, ["coinsurance"]);
+  assert.deepEqual(res.needsBenefits, []);                   // stripped on the public route
 });
 
 test("column fallback: a row the backend has not written → ok:false, blank, never $0", async () => {
@@ -248,4 +248,47 @@ test("displayText renders each kind", () => {
   assert.equal(displayText({ kind: "zero", low: 0, high: 0 }), "$0");
   assert.equal(displayText({ kind: "needBenefits" }), "Need benefits");
   assert.equal(displayText({ kind: "unwritten" }), "");
+});
+
+// ── Patient-facing safety (Brandon 2026-10-07): no internal wording, and nothing at all
+// for an internal-only payer or a check that ran under the wrong payer.
+test("internal-only payer (Horizon) → the card is hidden, no figure leaks", async () => {
+  const backend = async () => ({ ok: true, estimate: { low: 61.2, high: 61.2, text: "61.20" }, patientPaysNothing: false, confidence: "High",
+    flags: ["DO_NOT_SHARE_WITH_PATIENT"], flagText: ["x"], needsBenefits: [], zeroReason: "", snapshotPresent: true, patientVisible: false, wrongPayer: "" });
+  const res = await buildOopEstimateResponse({ itemId: "1", fetchEstimate: backend, readColumns: async () => null, log: quiet });
+  assert.equal(res.ok, false);
+  assert.equal(res.hidden, true);
+  assert.equal(res.kind, "hidden");
+  assert.equal(res.text, "");
+  assert.equal(res.low, null);
+  assert.deepEqual(res.flags, []);
+});
+
+test("wrong-payer check → hidden too (the re-run populates the figure)", async () => {
+  const backend = async () => ({ ok: false, reason: "need benefits", patientPaysNothing: false, confidence: "Low", flags: ["WRONG_PAYER"], flagText: ["x"],
+    needsBenefits: ["wrong payer — re-run under Humana"], zeroReason: "", snapshotPresent: true, patientVisible: true, wrongPayer: "Humana" });
+  const res = await buildOopEstimateResponse({ itemId: "1", fetchEstimate: backend, readColumns: async () => null, log: quiet });
+  assert.equal(res.hidden, true);
+  assert.deepEqual(res.needsBenefits, []);
+});
+
+test("column fallback with an internal-only flag in the dropdown is hidden as well", async () => {
+  const row = { [COLUMNS.OOP_ESTIMATE]: "$61.20", [COLUMNS.BNF_VERSION]: "br-test",
+    [COLUMNS.BNF_FLAGS]: "DO_NOT_SHARE_WITH_PATIENT", [COLUMNS.BNF_CONFIDENCE]: "High" };
+  const res = await buildOopEstimateResponse({ itemId: "1", fetchEstimate: async () => ({ ok: false, unavailable: true, reason: "down" }), readColumns: columnsOf(row), log: quiet });
+  assert.equal(res.hidden, true);
+  assert.equal(res.text, "");
+});
+
+test("every public response is patient-safe: no confidence, flags, reasons or missing-input tokens", async () => {
+  const backend = async () => ({ ok: true, estimate: { low: 1, high: 2, text: "1.00-2.00" }, patientPaysNothing: false, confidence: "Low",
+    flags: ["TIER_UNVERIFIED"], flagText: ["t"], needsBenefits: ["x"], zeroReason: "internal", snapshotPresent: true, patientVisible: true, wrongPayer: "" });
+  const res = await buildOopEstimateResponse({ itemId: "1", fetchEstimate: backend, readColumns: async () => null, log: quiet });
+  assert.equal(res.ok, true);
+  assert.equal(res.kind, "range");
+  assert.equal(res.confidence, "");
+  assert.deepEqual(res.flags, []);
+  assert.deepEqual(res.flagText, []);
+  assert.deepEqual(res.needsBenefits, []);
+  assert.equal(res.zeroReason, "");
 });
