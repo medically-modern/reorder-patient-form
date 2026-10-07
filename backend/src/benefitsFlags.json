@@ -5,8 +5,8 @@
   ],
   "generatedFrom": {
     "repo": "medically-modern/OOP-Cost-Estimator",
-    "sha": "181aa5e",
-    "at": "2026-10-07T16:34:14+00:00",
+    "sha": "4617c8a",
+    "at": "2026-10-07T18:13:57+00:00",
     "chargeSchedule": {
       "repo": "medicallymodern1/stedi-monday-integration",
       "sha": "d59da97",
@@ -15,7 +15,7 @@
   },
   "versions": {
     "rules": "2026.10.08",
-    "resolver": "br-2026.10.08.2",
+    "resolver": "br-2026.10.08.3",
     "estimate": "oop-2026.10.08.1",
     "rates": "2026.10.08"
   },
@@ -177,10 +177,6 @@
       "text": "Plan text says Dual / D-SNP — the member likely has Medicaid secondary that covers the cost share; confirm Secondary Insurance before quoting",
       "confidence": "Medium"
     },
-    "DUAL_COSTSHARE_UNVERIFIED": {
-      "text": "Dual / D-SNP plan: claims show this payer taking both $0 and the row's coinsurance from dual members — range shown until the pattern is settled; Medicaid secondary makes it $0",
-      "confidence": "Medium"
-    },
     "DEDUCTIBLE_REMAINING_UNKNOWN": {
       "text": "Deductible total is known but the remaining is not reported — first order cannot be priced; recurring assumes it is met",
       "confidence": "Low"
@@ -212,10 +208,6 @@
     "DO_NOT_SHARE_WITH_PATIENT": {
       "text": "Internal figure only — do not share the out-of-pocket estimate with the patient (Horizon BCBS)",
       "confidence": "Info"
-    },
-    "HUMANA_MONITOR_RATE_DISPUTED": {
-      "text": "Humana allowed $33.44 on the E2103 monitor in error (under dispute) — the monitor is quoted at 65-100% of the Medicare allowed until a corrected ERA arrives",
-      "confidence": "Medium"
     },
     "JLJ_PROGRAM_UNKNOWN": {
       "text": "Anthem Low-Cost (JLJ): the 271 names neither Child Health Plus nor an Essential Plan tier — 0-5% shown (EP1 pays 5% on cartridges only)",
