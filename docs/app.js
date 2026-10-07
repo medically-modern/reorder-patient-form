@@ -45,6 +45,12 @@ const state = {
   // Help
   helpChip: null,
   helpMessage: "",
+
+  // OOP estimate — answers from GET /api/oop-estimate, cached per infusion-set
+  // quantity so stepping back to a quantity already seen re-renders instantly.
+  oopEstimates: {},
+  oopInflight: {},
+  oopDebounceTimer: null,
 };
 
 // ─── Init ───
@@ -965,8 +971,14 @@ async function submitCareMessage() {
 }
 
 // ═══════════════════════════════════════════════════════
-// OOP ESTIMATE — total only (no deductible/coinsurance)
+// OOP ESTIMATE — read from the backend, never computed here
 // ═══════════════════════════════════════════════════════
+// The number comes from GET /api/oop-estimate?infusionSets=N: our backend asks the
+// Stedi backend (which owns every rate and rule) for this row at the quantity the
+// patient is choosing, or falls back to the OOP Estimate column it last wrote to
+// Monday. This file only decides whether to ask, and how to show the answer.
+
+const OOP_DEBOUNCE_MS = 300;
 
 function updateOop() {
   if (!state.patientData) return;
@@ -985,42 +997,118 @@ function updateOop() {
   // Otherwise hide warning, show OOP as normal
   if (warningCard) warningCard.style.display = "none";
 
-  const est = getOopEstimate();
-  if (!est || !est.ok || !est.canCalculateCosts) { card.style.display = "none"; return; }
+  const key = oopEstimateKey();
+  if (key === null) { card.style.display = "none"; return; }
+
+  // Already have this quantity's answer — render it now.
+  const cached = state.oopEstimates[key];
+  if (cached) { renderOopEstimate(cached); return; }
+
+  // The steppers fire on every tap: wait for the patient to settle on a quantity, and
+  // keep the previous number on the card (dimmed) until the new one arrives.
+  card.classList.add("oop-updating");
+  clearTimeout(state.oopDebounceTimer);
+  state.oopDebounceTimer = setTimeout(() => {
+    const pending = getOopEstimate();
+    if (!pending) { card.style.display = "none"; return; }
+    pending
+      .then((res) => { if (oopEstimateKey() === key) renderOopEstimate(res); })
+      .catch((err) => {
+        console.error("OOP estimate error:", err);
+        if (oopEstimateKey() === key) { card.classList.remove("oop-updating"); card.style.display = "none"; }
+      });
+  }, OOP_DEBOUNCE_MS);
+}
+
+// Which estimate the form needs right now, as a cache key: the infusion-set quantity the
+// patient has chosen, or "default" (the row's own quantity) when they are not served
+// infusion sets. `null` means this form must not show an estimate at all.
+function oopEstimateKey() {
+  const pd = state.patientData;
+  if (!pd || !pd.primaryInsurance) return null;
+  if ((pd.referralSource || "").toLowerCase().includes("carecentrix")) return null; // contact CareCentrix directly
+  if (pd.primaryInsurance === "Horizon BCBS") return null;
+  if (!pd.servingInfusionSet1) return "default";
+  const infusionSets = (parseInt(state.infQty1, 10) || 0) + (state.hasSecondSet ? (parseInt(state.infQty2, 10) || 0) : 0);
+  return String(infusionSets || 3);
+}
+
+// Promise of the route's answer for the current quantity (cached per quantity, one
+// request in flight per quantity), or null when no estimate should be shown.
+function getOopEstimate() {
+  const key = oopEstimateKey();
+  if (key === null) return null;
+  if (state.oopEstimates[key]) return Promise.resolve(state.oopEstimates[key]);
+  if (!state.oopInflight[key]) {
+    const query = key === "default" ? "" : `?infusionSets=${encodeURIComponent(key)}`;
+    state.oopInflight[key] = apiFetch(`/api/oop-estimate${query}`)
+      .then((res) => {
+        if (!res || typeof res.ok !== "boolean") throw new Error(res && res.error ? res.error : "Bad estimate response");
+        state.oopEstimates[key] = res;
+        return res;
+      })
+      .finally(() => { delete state.oopInflight[key]; });
+  }
+  return state.oopInflight[key];
+}
+
+// Patient-facing rendering of one route answer. Plain words only: the number, why it
+// is $0 or still unknown, how sure we are, and (folded away) what that is based on.
+function renderOopEstimate(res) {
+  const card = document.getElementById("oop-card");
+  card.classList.remove("oop-updating");
+  if (!res || !res.ok) { card.style.display = "none"; return; }
   card.style.display = "";
-  document.getElementById("oop-total").textContent = fmt(est.patientOwes || 0);
+
+  document.getElementById("oop-total").textContent = res.text || "—";
 
   // Supply duration: Medicaid = 60 day, everything else = 90 day
   const ins = (state.patientData.primaryInsurance || "").toLowerCase();
   const isMedicaid = ins.includes("medicaid");
   const durEl = document.getElementById("supply-duration");
   if (durEl) durEl.textContent = isMedicaid ? "60-Day Supply" : "90-Day Supply";
-}
 
-function getOopEstimate() {
-  const pd = state.patientData;
-  if (!pd || !pd.primaryInsurance) return null;
-  if ((pd.referralSource || "").toLowerCase().includes("carecentrix")) return null;
-  if (pd.primaryInsurance === "Horizon BCBS") return null;
+  // Reason line under the number
+  const reasonEl = document.getElementById("oop-reason");
+  let reason = "";
+  if (res.kind === "zero") {
+    reason = res.zeroReason || "Your plan covers these supplies in full.";
+  } else if (res.kind === "needBenefits") {
+    reason = "We're still confirming a few details with your insurance. We'll let you know before anything is charged.";
+    if (res.needsBenefits && res.needsBenefits.length) reason += ` (Still confirming: ${res.needsBenefits.join(", ")}.)`;
+  } else if (res.kind === "range") {
+    reason = "Your plan reports more than one possible rate, so this is a range.";
+  }
+  if (res.quantityAware === false && res.kind !== "needBenefits") {
+    reason += (reason ? " " : "") + "Based on your current order; changing quantities may change this.";
+  }
+  reasonEl.textContent = reason;
+  reasonEl.classList.toggle("hidden", !reason);
 
-  const hasCgm = pd.servingSensors;
-  const hasPump = pd.servingSupplies || pd.servingInfusionSet1 || pd.servingInfusionSet2;
-  let serving = "";
-  if (hasCgm && hasPump) serving = "CGM & Pump & Supplies";
-  else if (hasCgm) serving = "CGM";
-  else if (hasPump) serving = "Pump & Supplies";
+  // Confidence — always shown when the backend gave one
+  const confEl = document.getElementById("oop-confidence");
+  if (res.confidence) {
+    confEl.textContent = `Estimate confidence: ${res.confidence}`;
+    confEl.dataset.level = res.confidence.toLowerCase();
+    confEl.classList.remove("hidden");
+  } else {
+    confEl.textContent = "";
+    delete confEl.dataset.level;
+    confEl.classList.add("hidden");
+  }
 
-  const infusionSets = state.infQty1 + (state.hasSecondSet ? state.infQty2 : 0);
-
-  return estimateOop({
-    primaryInsurance: pd.primaryInsurance,
-    secondaryInsurance: pd.secondaryInsurance || "",
-    serving: serving,
-    infusionSets: infusionSets || 3,
-    deductibleRemaining: pd.deductibleRemaining || "",
-    stediCoinsurance: pd.stediCoinsurance || "",
-    oopMaxRemaining: pd.oopMaxRemaining || "",
-  });
+  // Flags — each flag's text, folded under "Why this estimate" so the card stays calm
+  const details = document.getElementById("oop-details");
+  const list = document.getElementById("oop-flags");
+  list.innerHTML = "";
+  const texts = Array.isArray(res.flagText) ? res.flagText.filter(Boolean) : [];
+  for (const t of texts) {
+    const li = document.createElement("li");
+    li.textContent = t;
+    list.appendChild(li);
+  }
+  details.classList.toggle("hidden", texts.length === 0);
+  details.open = false;
 }
 
 // ═══════════════════════════════════════════════════════

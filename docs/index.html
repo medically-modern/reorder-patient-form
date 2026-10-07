@@ -338,11 +338,17 @@
         <p class="insurance-warning-text">It looks like your insurance may have changed. If that's not the case, please call us at <a href="tel:3475037148" style="color:var(--brand-dark);font-weight:600">347-503-7148</a>. If it has, please send us your new insurance information on the Insurance step.</p>
       </div>
 
-      <!-- ═══ OOP Estimate ═══ -->
+      <!-- ═══ OOP Estimate — read from the backend (app.js renderOopEstimate), never computed here ═══ -->
       <div class="oop-card" id="oop-card" style="display:none">
-        <div class="oop-amount" id="oop-total">$0.00</div>
+        <div class="oop-amount" id="oop-total">&mdash;</div>
         <div class="supply-duration" id="supply-duration"></div>
         <div class="oop-label">Out-of-Pocket Estimate</div>
+        <p class="oop-reason hidden" id="oop-reason"></p>
+        <div class="oop-confidence hidden" id="oop-confidence"></div>
+        <details class="oop-details hidden" id="oop-details">
+          <summary>Why this estimate</summary>
+          <ul class="oop-flags" id="oop-flags"></ul>
+        </details>
         <p class="oop-note">Estimate based on the insurance currently on file. Final charges may vary based on your plan.</p>
         <p class="oop-note oop-not-bill">Note: This is NOT a bill.</p>
       </div>
