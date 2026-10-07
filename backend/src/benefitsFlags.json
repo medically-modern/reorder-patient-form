@@ -5,8 +5,8 @@
   ],
   "generatedFrom": {
     "repo": "medically-modern/OOP-Cost-Estimator",
-    "sha": "b3ae7c7",
-    "at": "2026-10-07T18:21:58+00:00",
+    "sha": "f653925",
+    "at": "2026-10-07T20:12:06+00:00",
     "chargeSchedule": {
       "repo": "medicallymodern1/stedi-monday-integration",
       "sha": "d59da97",
@@ -15,7 +15,7 @@
   },
   "versions": {
     "rules": "2026.10.08",
-    "resolver": "br-2026.10.08.3",
+    "resolver": "br-2026.10.08.4",
     "estimate": "oop-2026.10.08.1",
     "rates": "2026.10.08"
   },
@@ -74,8 +74,8 @@
       "confidence": "Info"
     },
     "SUPPLEMENT_PLAN_LETTER_UNCONFIRMED": {
-      "text": "Medicare Supplement on file — assumed to cover the balance; confirm the plan letter (K/L/HD pay less)",
-      "confidence": "Medium"
+      "text": "Medicare Supplement on file — it pays the Part B 20% ($0 to the patient, High); the Welcome Call still asks the plan letter (K/L/HD pay less)",
+      "confidence": "Info"
     },
     "COMMERCIAL_SECONDARY_PRESENT": {
       "text": "A commercial secondary was provided; coordination not modelled — primary share shown",
