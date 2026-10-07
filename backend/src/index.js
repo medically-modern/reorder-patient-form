@@ -1,4 +1,3 @@
-const crypto = require("crypto");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -10,7 +9,7 @@ const { verifyReorderToken, generateReorderToken, requireAuth, logout, COOKIE_OP
 const {
   getPatientData, getPatientOrderDetails, processReorderSubmission, findPatientByPhone, findPatientByUid, getPatientItemById,
   writeHelpMessage, storeTokenInMonday, getStatusIndexMap, resolveStatusIndex, initWriteQueue, uploadFileToMonday,
-  mondayQuery, refreshOopEstimate, getAllSubscriptionItemIds,
+  mondayQuery, getOopEstimateColumns,
 } = require("./monday");
 const { getProductStatus, toPatientMap, skuHealthCheck } = require("./skuStatus");
 const { sendSMS, buildConfirmationText, smsHealthCheck } = require("./sms");
@@ -19,17 +18,17 @@ const { queueHealthCheck } = require("./queue");
 const { startCron, checkAndProcessReorders } = require("./cron");
 const { notifySubmissionError, notifySmsError, notifyUnhandled, notifyError, notifyHealthCheck } = require("./notify");
 const { redis, healthCheck, getCachedPatientData, cachePatientData, invalidatePatientCache, acquireSubmissionLock, releaseSubmissionLock, deleteReorderToken, getIdempotencyResult, setIdempotencyResult, markSubmitted, hasSubmitted } = require("./redis");
-const { enqueueConfirmationSms, enqueueOopRefresh, enqueueOopBackfill } = require("./queue");
-const { COLUMNS, OOP_INPUT_COLUMNS, SUBSCRIPTION_BOARD_ID } = require("./config");
+const { enqueueConfirmationSms } = require("./queue");
+const { COLUMNS, stediBackendConfig } = require("./config");
+const { fetchBackendEstimate } = require("./oopEstimator");
+const { buildOopEstimateResponse, parseInfusionSetsParam } = require("./oopEstimateRoute");
 
 const app = express();
 
-// Monday webhook for OOP estimate inputs. The secret rides in the URL (?key=) because
-// board webhooks created with a personal token carry no signature. It lives only in
-// the OOP_WEBHOOK_SECRET Railway variable — this repo is public. Unset disables the
-// route rather than leaving it open.
+// RETIRED Monday webhook path for OOP estimate inputs (see the route below). The
+// board's webhooks still POST here until they are deleted, so the path is still
+// known to the rate limiter and still answers 200.
 const OOP_WEBHOOK_PATH = "/webhooks/monday/oop-inputs";
-const OOP_WEBHOOK_SECRET = process.env.OOP_WEBHOOK_SECRET || "";
 
 // ─── Multer for file uploads (insurance cards) ───
 const upload = multer({
@@ -83,10 +82,9 @@ app.set("trust proxy", 1);
 
 // ─── Rate limiters ───
 const redisStore = (prefix) => new RedisStore({ sendCommand: (...args) => redis.call(...args), prefix: `rl:reorder:${prefix}:` });
-// The Monday webhook is exempt: it arrives from a handful of Monday IPs, one call per
-// changed column, so a batch eligibility check would blow a 60/min per-IP limit and
-// Monday would retry into it. That route authenticates by secret instead and does
-// nothing but enqueue a deduplicated job.
+// The retired Monday webhook path stays exempt: until the board's webhooks are deleted
+// it still arrives from a handful of Monday IPs, one call per changed column, and a
+// batch eligibility check would blow a 60/min per-IP limit and make Monday retry.
 const globalLimiter = rateLimit({
   windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false, store: redisStore("global"),
   skip: (req) => req.path === OOP_WEBHOOK_PATH,
@@ -116,9 +114,14 @@ app.get("/health", async (req, res) => {
     // than none. That makes an outage look identical to "everything is in stock", so
     // its state has to be readable from outside.
     stock: skuHealthCheck(),
-    // The OOP estimate only follows eligibility checks while this is enabled; a
-    // missing secret otherwise looks exactly like a quiet day.
-    oopWebhook: OOP_WEBHOOK_SECRET ? "enabled" : "disabled (OOP_WEBHOOK_SECRET not set)",
+    // The OOP number comes from the Stedi backend. Without these two variables the form
+    // silently shows the (possibly stale) Monday column instead of a live quantity-aware
+    // estimate, which is indistinguishable from a healthy service — so say so here.
+    stediBackend: (() => {
+      const cfg = stediBackendConfig();
+      return cfg.url && cfg.adminKey ? "configured" : "not configured (STEDI_BACKEND_URL / STEDI_ADMIN_KEY) — column fallback only";
+    })(),
+    oopWebhook: "retired (Stedi backend writes OOP Estimate)",
     cron: "active",
     timestamp: new Date().toISOString(),
   });
@@ -306,77 +309,41 @@ app.post("/admin/trigger-reorder-check", async (req, res) => {
   }
 });
 
-// POST /admin/refresh-oop-estimates — recompute OOP_ESTIMATE from current Monday values
-//   { "itemId": "123" } → that one row, now; returns what it wrote
-//   {}                  → every row on the board, queued behind webhook work (backfill)
+// POST /admin/refresh-oop-estimates — RETIRED. This used to recompute OOP_ESTIMATE
+// from this repo's own estimator (one row, or a board-wide backfill). The Stedi
+// backend owns that column now; refresh or backfill it from there. Answers 200 so an
+// old automation calling it does not alarm, but writes nothing.
 app.post("/admin/refresh-oop-estimates", async (req, res) => {
-  try {
-    const apiKey = req.headers["x-api-key"];
-    if (apiKey !== process.env.ADMIN_API_KEY) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-
-    const itemId = req.body?.itemId;
-    if (itemId !== undefined) {
-      if (!/^\d+$/.test(String(itemId))) {
-        return res.status(400).json({ error: "itemId must be numeric" });
-      }
-      const result = await refreshOopEstimate(itemId);
-      return res.json({ success: true, result });
-    }
-
-    const itemIds = await getAllSubscriptionItemIds();
-    const runId = Date.now().toString();
-    const enqueued = await enqueueOopBackfill(itemIds, runId);
-    console.log(`[admin] OOP backfill ${runId}: ${enqueued} row(s) queued`);
-    res.json({ success: true, runId, enqueued });
-  } catch (err) {
-    console.error("[admin] OOP refresh failed:", err.message);
-    res.status(500).json({ error: "OOP refresh failed" });
+  const apiKey = req.headers["x-api-key"];
+  if (apiKey !== process.env.ADMIN_API_KEY) {
+    return res.status(401).json({ error: "Unauthorized" });
   }
+  console.log("[admin] /admin/refresh-oop-estimates called — retired, nothing written (Stedi backend owns OOP Estimate)");
+  res.json({
+    success: true,
+    retired: true,
+    message: "Retired: the Stedi backend (stedi-monday-integration) writes OOP Estimate. Refresh or backfill it there.",
+  });
 });
 
 // ═══════════════════════════════════════════════════════
-// MONDAY WEBHOOK — an OOP estimate input changed on a row
-// One Monday webhook per OOP_INPUT_COLUMNS entry points here. The payload is used
-// only for the row ID: the job re-reads the row from Monday before computing, so a
-// forged or stale event can at worst cause a recompute from real data.
+// MONDAY WEBHOOK — RETIRED
+// One Monday webhook per former OOP input column still points here until it is
+// deleted from the board (`npm run check:oop-webhooks` lists them). Nothing is
+// recomputed any more; the event is acknowledged so Monday does not retry, and the
+// one-time challenge handshake is still echoed so a stray re-creation cannot wedge.
 // ═══════════════════════════════════════════════════════
 
-function oopWebhookKeyMatches(key) {
-  const given = Buffer.from(String(key || ""));
-  const expected = Buffer.from(OOP_WEBHOOK_SECRET);
-  return given.length === expected.length && crypto.timingSafeEqual(given, expected);
-}
-
-app.post(OOP_WEBHOOK_PATH, async (req, res) => {
-  if (!OOP_WEBHOOK_SECRET) {
-    return res.status(503).json({ error: "OOP webhook disabled" });
-  }
-  if (!oopWebhookKeyMatches(req.query.key)) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
-  // Monday's one-time handshake when a webhook is created: echo the challenge.
+let _oopWebhookRetiredLogged = false;
+app.post(OOP_WEBHOOK_PATH, (req, res) => {
   if (req.body?.challenge) {
     return res.json({ challenge: req.body.challenge });
   }
-
-  const event = req.body?.event || {};
-  const itemId = String(event.pulseId || "");
-  if (String(event.boardId) !== SUBSCRIPTION_BOARD_ID || !OOP_INPUT_COLUMNS.includes(event.columnId) || !/^\d+$/.test(itemId)) {
-    // 200, not 4xx: Monday retries non-2xx, and this event will never be actionable.
-    return res.json({ ok: true, ignored: true });
+  if (!_oopWebhookRetiredLogged) {
+    _oopWebhookRetiredLogged = true;
+    console.log("[oop-webhook] retired — events are acknowledged and ignored; delete the board webhooks (npm run check:oop-webhooks)");
   }
-
-  try {
-    await enqueueOopRefresh(itemId, `webhook ${event.columnId}`);
-    res.json({ ok: true });
-  } catch (err) {
-    // 5xx so Monday redelivers — the enqueue is what we can't afford to lose.
-    console.error(`[oop-webhook] Enqueue failed for item ${itemId}: ${err.message}`);
-    res.status(500).json({ error: "Enqueue failed" });
-  }
+  res.json({ ok: true, retired: true });
 });
 
 // ═══════════════════════════════════════════════════════
@@ -456,6 +423,33 @@ app.get("/api/order-options", apiLimiter, requireAuth, async (req, res) => {
   } catch (err) {
     console.error("[api] Error fetching order options:", err.message);
     res.status(500).json({ error: "Unable to load options." });
+  }
+});
+
+// GET /api/oop-estimate?infusionSets=N — the number on the form's OOP card.
+// Asks the Stedi backend (POST /oop/estimate) for this row with the quantity the patient
+// is choosing; when the backend cannot be reached, falls back to the OOP Estimate column
+// the backend last wrote to Monday (source: "column" — not quantity-aware). This repo
+// does no math either way. Shape: oopEstimateRoute.js.
+app.get("/api/oop-estimate", apiLimiter, requireAuth, async (req, res) => {
+  try {
+    if (!req.itemId) {
+      return res.status(404).json({ ok: false, error: "Patient not found" });
+    }
+    const infusionSets = parseInfusionSetsParam(req.query.infusionSets);
+    const result = await buildOopEstimateResponse({
+      itemId: req.itemId,
+      infusionSets,
+      fetchEstimate: fetchBackendEstimate,
+      readColumns: getOopEstimateColumns,
+    });
+    if (result.notFound) {
+      return res.status(404).json({ ok: false, error: "Patient not found" });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("[api] OOP estimate error:", err.message);
+    res.status(500).json({ ok: false, error: "Unable to load your estimate right now." });
   }
 });
 

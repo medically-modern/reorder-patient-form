@@ -1,13 +1,12 @@
 const {
   SUBSCRIPTION_BOARD_ID,
   COLUMNS,
-  OOP_INPUT_COLUMNS,
   ORDER_RESPONSE_INDEX,
   INSURANCE_RESPONSE_INDEX,
 } = require("./config");
 const { enqueueWriteAndWait, startWorker, startReorderWorker, startSmsWorker, startSmsVerifyWorker, startOopRefreshWorker } = require("./queue");
 const { notifyMondayError } = require("./notify");
-const { estimateOop } = require("./oopEstimator");
+const { readBenefitsSnapshot } = require("./oopEstimator");
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
 const API_URL = "https://api.monday.com/v2";
@@ -327,10 +326,8 @@ async function getPatientData(itemId) {
     infusionSet2: isServing(infusionSet2) ? infusionSet2 : null,
     infQty2: isServing(infusionSet2) ? col(COLUMNS.INF_QTY_2) : null,
 
-    // Benefits / Stedi (for OOP estimator)
-    deductibleRemaining: col(COLUMNS.DEDUCTIBLE_REMAINING),
-    stediCoinsurance: col(COLUMNS.STEDI_COINSURANCE),
-    oopMaxRemaining: col(COLUMNS.OOP_MAX_REMAINING),
+    // The OOP estimate is NOT here. The form asks GET /api/oop-estimate, which reads the
+    // Stedi backend's columns (getOopEstimateColumns) or asks the backend directly.
 
     // Previous reorder response (if any)
     previousOrderResponse: col(COLUMNS.PATIENT_ORDER_RESPONSE),
@@ -772,79 +769,29 @@ async function storeTokenInMonday(itemIdArg, token, link) {
   if (!item) throw new Error("Patient not found");
   const itemId = validateNumericId(item.id, "item ID");
 
-  const col = (id) => {
-    const c = item.column_values.find((cv) => cv.id === id);
-    return c?.text || "";
-  };
-
-  // Calculate OOP estimate using the same logic as the frontend
-  const writes = [
+  // Token and link only. OOP_ESTIMATE (text_mm404p7d) used to be written here too;
+  // the Stedi backend owns that column now and this repo never writes it.
+  await Promise.all([
     writeText(itemId, COLUMNS.REORDER_TOKEN, token),
     writeText(itemId, COLUMNS.REORDER_LINK, link),
-  ];
-
-  try {
-    const oopText = computeOopEstimateText(col);
-    writes.push(writeText(itemId, COLUMNS.OOP_ESTIMATE, oopText));
-    console.log(`[monday] OOP estimate for item ${itemId}: ${oopText}`);
-  } catch (err) {
-    console.warn(`[monday] OOP estimate failed for item ${itemId}: ${err.message}`);
-    writes.push(writeText(itemId, COLUMNS.OOP_ESTIMATE, "Error: " + err.message));
-  }
-
-  await Promise.all(writes);
+  ]);
   console.log(`[monday] Reorder token stored for item ${itemId}`);
 }
 
-// ─── OOP estimate ───
-// The text written to OOP_ESTIMATE, from a row's column text (`col(id)` → string).
-// Shared by link creation (storeTokenInMonday) and the input-change refresh
-// (refreshOopEstimate) so the two can never compute differently. Reads only
-// OOP_INPUT_COLUMNS (config.js) — a new input here needs a webhook there too.
-function computeOopEstimateText(col) {
-  const primaryIns = col(COLUMNS.PRIMARY_INS);
+// ─── OOP estimate — READ ONLY ───
+// The Stedi backend (stedi-monday-integration) resolves benefits and writes the
+// estimate columns (config.js BNF_* and OOP_ESTIMATE). This repo reads them and
+// never writes them. See oopEstimator.js for the formats.
 
-  const isServing = (val) => val && val !== "Not Serving" && val.trim() !== "";
-  const hasCgm = isServing(col(COLUMNS.SENSORS_TYPE));
-  const hasPump = isServing(col(COLUMNS.SUPPLIES_TYPE)) || isServing(col(COLUMNS.INFUSION_SET_1));
-  let serving = "";
-  if (hasCgm && hasPump) serving = "CGM & Pump & Supplies";
-  else if (hasCgm) serving = "CGM";
-  else if (hasPump) serving = "Pump & Supplies";
-
-  const infQty1 = parseInt(col(COLUMNS.INF_QTY_1), 10) || 0;
-  const infQty2 = parseInt(col(COLUMNS.INF_QTY_2), 10) || 0;
-  const infusionSets = (infQty1 + infQty2) || 3;
-
-  const est = estimateOop({
-    primaryInsurance: primaryIns,
-    secondaryInsurance: col(COLUMNS.SECONDARY_INS) || "",
-    serving,
-    infusionSets,
-    deductibleRemaining: col(COLUMNS.DEDUCTIBLE_REMAINING) || "",
-    stediCoinsurance: col(COLUMNS.STEDI_COINSURANCE) || "",
-    oopMaxRemaining: col(COLUMNS.OOP_MAX_REMAINING) || "",
-  });
-
-  if (est.ok && est.canCalculateCosts) {
-    return `$${est.patientOwes.toFixed(2)}`;
-  } else if (est.ok && est.medicaidCovers) {
-    return "$0.00";
-  }
-  return est.ok ? "Incomplete benefits data" : (est.reason || "N/A");
-}
-
-// Recompute one row's OOP_ESTIMATE from its current Monday values. Called by the
-// reorder-oop-refresh worker (queue.js) after an input column changes, and by the
-// backfill. Writes only when the text differs, so a re-check that returns the same
-// benefits leaves the column (and its activity log) alone.
-//
-// Deliberately bypasses the shared reorder-monday-writes queue: that queue carries
-// patient submissions and link creation at 1 write/sec, and a board-wide backfill
-// must never sit in front of them. This worker has its own rate limit instead.
-async function refreshOopEstimate(itemIdArg) {
+// One row's benefits snapshot: the parsed recurring estimate, confidence, flags,
+// note and resolver version. Used by GET /api/oop-estimate when the Stedi backend
+// cannot be asked directly.
+async function getOopEstimateColumns(itemIdArg) {
   const safeId = validateNumericId(itemIdArg, "item ID");
-  const ids = [...OOP_INPUT_COLUMNS, COLUMNS.OOP_ESTIMATE].map(validateColumnId);
+  const ids = [
+    COLUMNS.OOP_ESTIMATE, COLUMNS.BNF_FIRST_WMON, COLUMNS.BNF_CONFIDENCE, COLUMNS.BNF_FLAGS,
+    COLUMNS.BNF_OOP_NOTE, COLUMNS.BNF_VERSION,
+  ].map(validateColumnId);
 
   const data = await mondayQuery(`{
     items(ids: [${safeId}]) {
@@ -854,34 +801,26 @@ async function refreshOopEstimate(itemIdArg) {
   }`);
 
   const item = data.items?.[0];
-  if (!item) return { itemId: safeId, skipped: "not found" };
-  if (String(item.board?.id) !== SUBSCRIPTION_BOARD_ID) return { itemId: safeId, skipped: "not on subscription board" };
-  if (item.state !== "active") return { itemId: safeId, skipped: `item ${item.state}` };
-
-  const col = (id) => {
-    const c = item.column_values.find((cv) => cv.id === id);
-    return c?.text || "";
-  };
-
-  let oopText;
-  try {
-    oopText = computeOopEstimateText(col);
-  } catch (err) {
-    // Same fallback link creation writes, so both paths leave the same text.
-    console.warn(`[oop-refresh] OOP estimate failed for item ${safeId}: ${err.message}`);
-    oopText = "Error: " + err.message;
-  }
-
-  const previous = col(COLUMNS.OOP_ESTIMATE);
-  if (previous === oopText) return { itemId: safeId, changed: false, oopText };
-
-  await mondayQuery(WRITE_MUTATION, {
-    boardId: SUBSCRIPTION_BOARD_ID, itemId: safeId, columnId: COLUMNS.OOP_ESTIMATE, value: JSON.stringify(oopText),
-  });
-  return { itemId: safeId, changed: true, previous, oopText };
+  if (!item) return null;
+  if (String(item.board?.id) !== SUBSCRIPTION_BOARD_ID) return null;
+  return readBenefitsSnapshot(item.column_values || []);
 }
 
-// Every item ID on the Subscription Board, for the one-off backfill.
+// RETIRED. Until 2026-10 this recomputed and wrote OOP_ESTIMATE after an input column
+// changed (webhook) or for a board-wide backfill. The Stedi backend owns the column
+// now. Kept as a no-op so queue.js and the admin route keep loading; it logs once
+// and returns a skipped result, and never writes.
+let _refreshRetiredLogged = false;
+async function refreshOopEstimate(itemIdArg) {
+  if (!_refreshRetiredLogged) {
+    _refreshRetiredLogged = true;
+    console.log("[oop-refresh] retired — the Stedi backend writes OOP Estimate (text_mm404p7d); this repo no longer computes it");
+  }
+  return { itemId: String(itemIdArg), skipped: "retired: Stedi backend owns OOP Estimate" };
+}
+
+// Every item ID on the Subscription Board. Was the input to the retired OOP backfill;
+// kept because it is a general board walk with no OOP logic in it.
 async function getAllSubscriptionItemIds() {
   const safeBoard = validateNumericId(SUBSCRIPTION_BOARD_ID, "board ID");
   const ids = [];
@@ -1070,7 +1009,7 @@ module.exports = {
   uploadFileToMonday,
   writeHelpMessage,
   storeTokenInMonday,
-  computeOopEstimateText,
+  getOopEstimateColumns,
   refreshOopEstimate,
   getAllSubscriptionItemIds,
   lookupTokenInMonday,
