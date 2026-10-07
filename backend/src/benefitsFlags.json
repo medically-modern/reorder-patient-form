@@ -1,21 +1,21 @@
 {
   "$comment": [
-    "GENERATED from medically-modern/OOP-Cost-Estimator exports/payer_policy.json (scripts/export_payer_policy.py) \u2014 do not edit; replace from a fresh export.",
+    "GENERATED from medically-modern/OOP-Cost-Estimator exports/payer_policy.json (scripts/export_payer_policy.py) — do not edit; replace from a fresh export.",
     "Flag code -> text + confidence, and the confidence vocabulary. This form shows none of it to the patient (2026-10-07); kept for the server-side reader and logs."
   ],
   "generatedFrom": {
     "repo": "medically-modern/OOP-Cost-Estimator",
-    "sha": "unknown",
-    "at": "2026-10-07T14:34:30+00:00",
+    "sha": "181aa5e",
+    "at": "2026-10-07T16:34:14+00:00",
     "chargeSchedule": {
       "repo": "medicallymodern1/stedi-monday-integration",
-      "sha": "69e05bd",
-      "at": "2026-10-07T14:29:30+00:00"
+      "sha": "d59da97",
+      "at": "2026-10-07T15:56:22+00:00"
     }
   },
   "versions": {
     "rules": "2026.10.08",
-    "resolver": "br-2026.10.08.1",
+    "resolver": "br-2026.10.08.2",
     "estimate": "oop-2026.10.08.1",
     "rates": "2026.10.08"
   },
@@ -26,15 +26,15 @@
   ],
   "flags": {
     "TIER_UNVERIFIED": {
-      "text": "Plan has in-network tiers; which tier we are in is not verified \u2014 call the payer and add it to the tier rulebook",
+      "text": "Plan has in-network tiers; which tier we are in is not verified — call the payer and add it to the tier rulebook",
       "confidence": "Low"
     },
     "COINSURANCE_AMBIGUOUS": {
-      "text": "271 lists more than one in-network DME coinsurance and no rule picks one \u2014 range shown",
+      "text": "271 lists more than one in-network DME coinsurance and no rule picks one — range shown",
       "confidence": "Low"
     },
     "POS_UNVERIFIED": {
-      "text": "Payer splits DME cost share by place of service; the applicable row is not proven by claims yet \u2014 range shown",
+      "text": "Payer splits DME cost share by place of service; the applicable row is not proven by claims yet — range shown",
       "confidence": "Low"
     },
     "COINSURANCE_PLAN_LEVEL": {
@@ -54,7 +54,7 @@
       "confidence": "Medium"
     },
     "DEDUCTIBLE_MISSING": {
-      "text": "No deductible row and nothing to infer from \u2014 unknown",
+      "text": "No deductible row and nothing to infer from — unknown",
       "confidence": "Low"
     },
     "DEDUCTIBLE_REMAINING_DERIVED": {
@@ -74,11 +74,11 @@
       "confidence": "Info"
     },
     "SUPPLEMENT_PLAN_LETTER_UNCONFIRMED": {
-      "text": "Medicare Supplement on file \u2014 assumed to cover the balance; confirm the plan letter (K/L/HD pay less)",
+      "text": "Medicare Supplement on file — assumed to cover the balance; confirm the plan letter (K/L/HD pay less)",
       "confidence": "Medium"
     },
     "COMMERCIAL_SECONDARY_PRESENT": {
-      "text": "A commercial secondary was provided; coordination not modelled \u2014 primary share shown",
+      "text": "A commercial secondary was provided; coordination not modelled — primary share shown",
       "confidence": "Medium"
     },
     "DISCLAIMER_ROW_IGNORED": {
@@ -90,11 +90,11 @@
       "confidence": "Info"
     },
     "NO_BENEFIT_ROWS": {
-      "text": "271 carries no benefit rows \u2014 nothing to resolve",
+      "text": "271 carries no benefit rows — nothing to resolve",
       "confidence": "Low"
     },
     "QMB": {
-      "text": "Qualified Medicare Beneficiary \u2014 patient cannot be billed",
+      "text": "Qualified Medicare Beneficiary — patient cannot be billed",
       "confidence": "Info"
     },
     "DUAL_MEDICAID_RESPONSE": {
@@ -106,11 +106,11 @@
       "confidence": "Info"
     },
     "ZERO_OOP_PAYER": {
-      "text": "Payer / label is a 0% coinsurance payer by rule \u2014 priced after the plan deductible unless the deductible is proven waived",
+      "text": "Payer / label is a 0% coinsurance payer by rule — priced after the plan deductible unless the deductible is proven waived",
       "confidence": "Info"
     },
     "PRIMARY_MEDICAID": {
-      "text": "Primary insurance is a Medicaid product \u2014 no patient cost share",
+      "text": "Primary insurance is a Medicaid product — no patient cost share",
       "confidence": "Info"
     },
     "OUT_OF_NETWORK_ONLY": {
@@ -122,11 +122,11 @@
       "confidence": "Low"
     },
     "UHC_COSTSHARE_UNVERIFIED": {
-      "text": "UnitedHealthcare/Oxford commercial \u2014 claims have contradicted the 271's DME cost share for this plan type; range shown, confirm by phone",
+      "text": "UnitedHealthcare/Oxford commercial — claims have contradicted the 271's DME cost share for this plan type; range shown, confirm by phone",
       "confidence": "Low"
     },
     "HUMANA_GROUP_PLAN_UNVERIFIED": {
-      "text": "Humana employer-group plan \u2014 CGM carve-out not proven for this group; range shown, confirm by phone",
+      "text": "Humana employer-group plan — CGM carve-out not proven for this group; range shown, confirm by phone",
       "confidence": "Low"
     },
     "LABEL_MISMATCH": {
@@ -134,15 +134,15 @@
       "confidence": "Medium"
     },
     "MA_PLAN_RESPONSE_NEEDED": {
-      "text": "CMS 271 shows Medicare Advantage enrollment \u2014 Part B rows do not apply; cost share comes from the MA carrier's own 271",
+      "text": "CMS 271 shows Medicare Advantage enrollment — Part B rows do not apply; cost share comes from the MA carrier's own 271",
       "confidence": "Low"
     },
     "COVERAGE_INACTIVE": {
-      "text": "271 reports inactive coverage \u2014 nothing here can price an order",
+      "text": "271 reports inactive coverage — nothing here can price an order",
       "confidence": "Low"
     },
     "SECONDARY_MEDICAID_COVERS": {
-      "text": "Secondary NY Medicaid covers the primary's cost share \u2014 patient pays $0",
+      "text": "Secondary NY Medicaid covers the primary's cost share — patient pays $0",
       "confidence": "Info"
     },
     "COPAY_ONCE_PER_DOS": {
@@ -150,23 +150,23 @@
       "confidence": "Info"
     },
     "COPAY_PROVIDER_TYPE_CONDITIONAL": {
-      "text": "The copay row is scoped to specific provider types; it may not apply to a DME supplier \u2014 shown as a range",
+      "text": "The copay row is scoped to specific provider types; it may not apply to a DME supplier — shown as a range",
       "confidence": "Info"
     },
     "COPAY_AMBIGUOUS": {
-      "text": "271 lists several DME copays (item tiers) and nothing says which applies \u2014 shown as a range",
+      "text": "271 lists several DME copays (item tiers) and nothing says which applies — shown as a range",
       "confidence": "Low"
     },
     "EP_PUMP_UNVERIFIED": {
-      "text": "Essential Plan pump cost share has paid both $0 and the 5% row \u2014 range shown",
+      "text": "Essential Plan pump cost share has paid both $0 and the 5% row — range shown",
       "confidence": "Medium"
     },
     "ZERO_OOP_RULE_UNPROVEN": {
-      "text": "The $0 business rule for this payer is not fully proven by claims (contradictions logged) \u2014 confirm before promising $0",
+      "text": "The $0 business rule for this payer is not fully proven by claims (contradictions logged) — confirm before promising $0",
       "confidence": "Medium"
     },
     "PAYER_RULE_UNPROVEN": {
-      "text": "A payer rule with Medium/Low claims evidence set this cost share \u2014 confirm by phone before quoting",
+      "text": "A payer rule with Medium/Low claims evidence set this cost share — confirm by phone before quoting",
       "confidence": "Medium"
     },
     "OOP_REMAINING_DERIVED": {
@@ -174,43 +174,55 @@
       "confidence": "Medium"
     },
     "DUAL_PLAN_CONFIRM_SECONDARY": {
-      "text": "Plan text says Dual / D-SNP \u2014 the member likely has Medicaid secondary that covers the cost share; confirm Secondary Insurance before quoting",
+      "text": "Plan text says Dual / D-SNP — the member likely has Medicaid secondary that covers the cost share; confirm Secondary Insurance before quoting",
+      "confidence": "Medium"
+    },
+    "DUAL_COSTSHARE_UNVERIFIED": {
+      "text": "Dual / D-SNP plan: claims show this payer taking both $0 and the row's coinsurance from dual members — range shown until the pattern is settled; Medicaid secondary makes it $0",
       "confidence": "Medium"
     },
     "DEDUCTIBLE_REMAINING_UNKNOWN": {
-      "text": "Deductible total is known but the remaining is not reported \u2014 first order cannot be priced; recurring assumes it is met",
+      "text": "Deductible total is known but the remaining is not reported — first order cannot be priced; recurring assumes it is met",
       "confidence": "Low"
     },
     "MEDICARE_SUPPLEMENT_UNKNOWN": {
-      "text": "Original Medicare \u2014 $0 if the patient has a Medigap supplement (plus any Part B deductible left on plans G/N), the 20% figure if not; ask on the call and add the supplement as Secondary Insurance",
+      "text": "Original Medicare — $0 if the patient has a Medigap supplement (plus any Part B deductible left on plans G/N), the 20% figure if not; ask on the call and add the supplement as Secondary Insurance",
       "confidence": "Medium"
     },
     "DEDUCTIBLE_APPLIES_ON_ZERO_BENEFIT": {
-      "text": "0% coinsurance on diabetic DME is claims-proven for this plan, but the plan deductible still applies \u2014 the first order is up to the deductible remaining",
+      "text": "0% coinsurance on diabetic DME is claims-proven for this plan, but the plan deductible still applies — the first order is up to the deductible remaining",
       "confidence": "Medium"
     },
     "DEDUCTIBLE_ON_ZERO_UNKNOWN": {
-      "text": "The plan has deductible remaining and nothing proves whether it applies before the 0% / copay benefit \u2014 quoted as $0 up to the deductible; confirm on the benefits call",
+      "text": "The plan has deductible remaining and nothing proves whether it applies before the 0% / copay benefit — quoted as $0 up to the deductible; confirm on the benefits call",
       "confidence": "Medium"
     },
     "DEDUCTIBLE_WAIVED_BY_271": {
-      "text": "The 271 says our lines are not subject to the deductible (a $0 DME deductible row or 'deductible does not apply') \u2014 priced without it",
+      "text": "The 271 says our lines are not subject to the deductible (a $0 DME deductible row or 'deductible does not apply') — priced without it",
       "confidence": "Info"
     },
     "DEDUCTIBLE_DME_SPECIFIC": {
-      "text": "The 271 carries a DME-specific deductible \u2014 that accumulator is applied to our lines, not the plan-level one",
+      "text": "The 271 carries a DME-specific deductible — that accumulator is applied to our lines, not the plan-level one",
       "confidence": "Info"
     },
     "WRONG_PAYER": {
-      "text": "This 271 shows the check ran under the wrong payer \u2014 re-run under the right one; no estimate until then",
+      "text": "This 271 shows the check ran under the wrong payer — re-run under the right one; no estimate until then",
       "confidence": "Low"
     },
     "DO_NOT_SHARE_WITH_PATIENT": {
-      "text": "Internal figure only \u2014 do not share the out-of-pocket estimate with the patient (Horizon BCBS)",
+      "text": "Internal figure only — do not share the out-of-pocket estimate with the patient (Horizon BCBS)",
       "confidence": "Info"
     },
     "HUMANA_MONITOR_RATE_DISPUTED": {
-      "text": "Humana allowed $33.44 on the E2103 monitor in error (under dispute) \u2014 the monitor is quoted at 65-100% of the Medicare allowed until a corrected ERA arrives",
+      "text": "Humana allowed $33.44 on the E2103 monitor in error (under dispute) — the monitor is quoted at 65-100% of the Medicare allowed until a corrected ERA arrives",
+      "confidence": "Medium"
+    },
+    "JLJ_PROGRAM_UNKNOWN": {
+      "text": "Anthem Low-Cost (JLJ): the 271 names neither Child Health Plus nor an Essential Plan tier — 0-5% shown (EP1 pays 5% on cartridges only)",
+      "confidence": "Medium"
+    },
+    "PLAN_COSTSHARE_CONTRADICTED": {
+      "text": "Claims for this plan paid a different coinsurance than its 271 row — range shown; confirm on the benefits call",
       "confidence": "Medium"
     }
   }
