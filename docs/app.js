@@ -1043,7 +1043,8 @@ function getOopEstimate() {
     const query = key === "default" ? "" : `?infusionSets=${encodeURIComponent(key)}`;
     state.oopInflight[key] = apiFetch(`/api/oop-estimate${query}`)
       .then((res) => {
-        if (!res || typeof res.ok !== "boolean") throw new Error(res && res.error ? res.error : "Bad estimate response");
+        // An error body ({error: …}) is not an answer — don't cache it, so the next tap retries.
+        if (!res || typeof res.ok !== "boolean" || res.error) throw new Error(res && res.error ? res.error : "Bad estimate response");
         state.oopEstimates[key] = res;
         return res;
       })
