@@ -95,7 +95,7 @@ const COLUMNS = {
   BNF_OOP_USED:     "text_bnf_oop_used",    // dollars, "" = unknown
   BNF_OOP_LEVEL:    "text_bnf_oop_level",   // "IND" / "FAM" / ""
   BNF_CONFIDENCE:   "color_bnf_confidence", // status — High / Medium / Low (the whole resolution's)
-  BNF_OOP_CONF:     "text_bnf_oop_conf",    // text — High / Medium / Low: the ESTIMATE's own, serving-aware; show this beside the figure (blank -> BNF_CONFIDENCE)
+  BNF_OOP_CONF:     "text_bnf_oop_conf",    // RETIRED 2026-10-07 (blank on new rows): Benefits Confidence now carries the estimate's own; kept so old rows still read. Was: show this beside the figure (blank -> BNF_CONFIDENCE)
   BNF_FLAGS:        "dropdown_bnf_flags",   // dropdown — zero or more flag codes (benefitsFlags.json has the text)
   BNF_REASONS:      "text_bnf_reasons",     // one decision per line, display only
   BNF_VERSION:      "text_bnf_version",     // e.g. "br-2026.10.07.3"; BLANK = backend has not resolved this item yet
