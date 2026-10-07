@@ -169,6 +169,8 @@ function missingFromNote(note) {
 
 function normalizeMoney(field) {
   if (!field || typeof field !== "object") return null;
+  // null / "" must stay unknown — Number(null) is 0, and 0 would read as "you owe nothing".
+  if (field.low == null || field.high == null || field.low === "" || field.high === "") return null;
   const low = Number(field.low);
   const high = Number(field.high);
   if (!Number.isFinite(low) || !Number.isFinite(high)) return null;

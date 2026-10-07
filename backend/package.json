@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
+    "test": "node --test test/*.test.js",
     "create-columns": "node src/scripts/create-columns.js",
     "check:labels": "node src/checkLabels.js",
     "check:oop-webhooks": "node src/checkOopWebhooks.js"

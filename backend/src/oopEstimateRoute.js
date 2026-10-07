@@ -35,6 +35,7 @@ const MAX_INFUSION_SETS = 9; // the form's own cap (Anthem Commercial / Horizon 
 // given" rather than an error: the backend then uses the row's stored quantity.
 function parseInfusionSetsParam(raw) {
   if (raw == null || raw === "") return undefined;
+  if (typeof raw !== "string" && typeof raw !== "number") return undefined; // ?a=1&a=2 arrives as an array
   const n = Number.parseInt(String(raw), 10);
   if (!Number.isInteger(n) || n < MIN_INFUSION_SETS || n > MAX_INFUSION_SETS) return undefined;
   return n;
