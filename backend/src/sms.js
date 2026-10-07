@@ -231,6 +231,10 @@ function buildReorderText(accountName, nextOrderDate, reorderLink, opts = {}) {
   lines.push(``);
   lines.push(`Confirm and schedule your delivery here:`);
   lines.push(reorderLink);
+  // Brandon, 2026-09-25: every patient text invites a reply. Its own
+  // paragraph, so nothing but whitespace follows the link on its line.
+  lines.push(``);
+  lines.push(`Feel free to text us with any questions!`);
 
   return lines.join(" \n");
 }
