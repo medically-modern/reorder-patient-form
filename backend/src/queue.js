@@ -227,12 +227,20 @@ function startReorderWorker() {
 // the batch is claimed via NX and verification is enqueued exactly once.
 // No redis.keys() — uses deterministic keys keyed by batchId.
 
-async function checkBatchComplete(batchId) {
+// `countCompletion: false` is for the cron's post-enqueue check: it must only READ the
+// counter. Counting it as a completion (as it did until 2026-11-02) declared every batch done
+// one job early, so the last patient's SMS was never delivery-verified or retried.
+async function checkBatchComplete(batchId, { countCompletion = true } = {}) {
   if (!batchId) return;
   const { redis } = require("./redis");
 
-  const completedCount = await redis.incr(`sms-verify:${batchId}:completed`);
-  await redis.expire(`sms-verify:${batchId}:completed`, 7200);
+  let completedCount;
+  if (countCompletion) {
+    completedCount = await redis.incr(`sms-verify:${batchId}:completed`);
+    await redis.expire(`sms-verify:${batchId}:completed`, 7200);
+  } else {
+    completedCount = parseInt((await redis.get(`sms-verify:${batchId}:completed`)) || "0", 10);
+  }
 
   const expectedStr = await redis.get(`sms-verify:${batchId}:expected`);
   if (!expectedStr) return; // Cron hasn't finished enqueuing yet — next completion will re-check

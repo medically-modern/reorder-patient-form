@@ -79,8 +79,9 @@ async function checkAndProcessReorders() {
     // If some failed to enqueue, expected = enqueued (not toProcess.length).
     if (enqueued > 0) {
       await redis.set(`sms-verify:${batchId}:expected`, enqueued, "EX", 7200);
-      // In case all jobs already completed before we set expected
-      await checkBatchComplete(batchId).catch(err =>
+      // In case all jobs already completed before we set expected. Read-only: this is not a
+      // job completion, and counting it would close the batch one job early.
+      await checkBatchComplete(batchId, { countCompletion: false }).catch(err =>
         console.error(`[cron] Post-enqueue batch check error: ${err.message}`)
       );
     }
