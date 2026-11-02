@@ -165,7 +165,10 @@ carrying `REORDER_TEXT_SENT` are skipped, so a re-run does not double-text.
 Four BullMQ queues (`backend/src/queue.js`): `reorder-monday-writes`, `reorder-patient-process`,
 `reorder-confirmation-sms` and `reorder-sms-verify` (`reorder-oop-refresh` is retired — §3).
 `reorder-sms-verify` re-reads RingCentral ~10 minutes later to confirm messages actually went out
-— **an accepted SMS is not a delivered SMS**.
+— **an accepted SMS is not a delivered SMS**. A failed text is re-sent once; anything still
+Queued/Sent, re-sent, or un-checkable is re-checked at +30m, +2h and +6h (`FOLLOW_UP_DELAYS_MS`),
+and an ntfy alert fires only for what is still unconfirmed after the last re-check, a re-send
+that failed again, or a re-send that could not be sent. `verifySmsBatch()` is the testable core.
 
 ---
 

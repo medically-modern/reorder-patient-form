@@ -357,9 +357,15 @@ async function enqueueConfirmationSms(itemId, optOuts = {}, delayMs = 20_000) {
 }
 
 // ─── SMS Delivery Verification Queue ───
-// Fires once per cron batch, 10 min after last send.
-// Checks every messageId against RC message-store API.
-// Retries failed deliveries, alerts on anything still stuck.
+// Fires once per cron batch, 10 min after last send, and checks every messageId against
+// the RC message-store API. A message RC failed is re-sent ONCE. Anything not settled yet —
+// still Queued/Sent, a re-sent message, or a status check that errored — is checked again in
+// a follow-up job (FOLLOW_UP_DELAYS_MS), so a slow or failed text is never left unknown.
+// Alerts go out for what needs a human: a re-send that could not be sent, a message that
+// failed again after its re-send, and anything still unsettled after the last follow-up.
+
+const FOLLOW_UP_DELAYS_MS = [30 * 60 * 1000, 2 * 60 * 60 * 1000, 6 * 60 * 60 * 1000]; // +30m, +2h, +6h
+const MAX_RESENDS = 1;
 
 const smsVerifyQueue = new Queue("reorder-sms-verify", {
   connection,
@@ -373,102 +379,133 @@ const smsVerifyQueue = new Queue("reorder-sms-verify", {
 
 let _smsVerifyWorker = null;
 
+const who = (m) => `${m.name} (${m.uid})`;
+
+/**
+ * One verification pass. Pure apart from `deps`, so it is testable without RC or Redis.
+ * @param {Array} sentMessages  [{uid, name, phone, messageId, originalMessage, resends?}]
+ * @param {number} round        0 = first check (10 min after send), 1.. = follow-ups
+ * @param {object} deps         {checkMessageStatus, sendSMS, notifyError, enqueueFollowUp(msgs, delayMs, round), sleep}
+ */
+async function verifySmsBatch(sentMessages, round, deps) {
+  const { checkMessageStatus, sendSMS, notifyError, enqueueFollowUp } = deps;
+  const sleep = deps.sleep || ((ms) => new Promise(r => setTimeout(r, ms)));
+  const label = round === 0 ? "first check" : `follow-up ${round}/${FOLLOW_UP_DELAYS_MS.length}`;
+  console.log(`[sms-verify] Verifying ${sentMessages.length} message(s) — ${label}`);
+
+  const delivered = [];
+  const failed = [];
+  const stuck = [];
+  const checkErrors = [];
+
+  for (const msg of sentMessages) {
+    try {
+      const status = await checkMessageStatus(msg.messageId);
+      if (status.status === "Delivered") {
+        delivered.push(msg);
+      } else if (status.status === "DeliveryFailed" || status.status === "SendingFailed") {
+        failed.push({ ...msg, rcStatus: status.status });
+      } else {
+        stuck.push({ ...msg, rcStatus: status.status }); // Queued / Sent — not settled yet
+      }
+    } catch (err) {
+      console.error(`[sms-verify] Error checking messageId ${msg.messageId}: ${err.message}`);
+      checkErrors.push({ ...msg, error: err.message });
+    }
+    await sleep(500); // respect RC rate limits
+  }
+
+  console.log(`[sms-verify] Results (${label}): ${delivered.length} delivered, ${failed.length} failed, ${stuck.length} still pending, ${checkErrors.length} check errors`);
+  for (const m of delivered) {
+    if (round > 0 || m.resends) console.log(`[sms-verify] Delivered on ${label}: ${who(m)}, messageId=${m.messageId}`);
+  }
+
+  // ─── Re-send failed deliveries, once per patient text ───
+  const resent = [];
+  const resendErrors = [];
+  const failedAgain = [];
+  for (const msg of failed) {
+    if ((msg.resends || 0) >= MAX_RESENDS) {
+      failedAgain.push(msg);
+      continue;
+    }
+    try {
+      console.log(`[sms-verify] Retrying SMS for ${msg.name} (UID ${msg.uid}) — original status: ${msg.rcStatus}`);
+      const r = await sendSMS(msg.phone, msg.originalMessage, { patientName: msg.name });
+      if (!r || !r.messageId) throw new Error("re-send returned no messageId");
+      console.log(`[sms-verify] Re-sent ${who(msg)}: ${msg.messageId} → ${r.messageId}`);
+      resent.push({ ...msg, previousMessageId: msg.messageId, messageId: r.messageId, resends: (msg.resends || 0) + 1 });
+    } catch (err) {
+      console.error(`[sms-verify] Retry failed for ${msg.name} (UID ${msg.uid}): ${err.message}`);
+      resendErrors.push({ ...msg, retryError: err.message });
+    }
+    await sleep(1000);
+  }
+
+  // ─── Anything unsettled is checked again later ───
+  const pending = [...stuck, ...checkErrors, ...resent].map(({ rcStatus, error, ...m }) => m);
+  const nextDelay = FOLLOW_UP_DELAYS_MS[round];
+  let followUpQueued = false;
+  if (pending.length > 0 && nextDelay !== undefined) {
+    await enqueueFollowUp(pending, nextDelay, round + 1);
+    followUpQueued = true;
+    for (const m of stuck) console.log(`[sms-verify] Still ${m.rcStatus} on ${label}: ${who(m)}, messageId=${m.messageId} — re-checking in ${nextDelay / 60000} min`);
+  }
+
+  // ─── Alert on anything that needs human attention ───
+  const problems = [];
+  if (resendErrors.length > 0) {
+    problems.push(`${resendErrors.length} SMS failed delivery AND the re-send could not be sent:\n` +
+      resendErrors.map(r => `  - ${who(r)}: ${r.rcStatus} → retry error: ${r.retryError}`).join("\n"));
+  }
+  if (failedAgain.length > 0) {
+    problems.push(`${failedAgain.length} SMS failed again after being re-sent — the patient has NOT received the reorder text:\n` +
+      failedAgain.map(r => `  - ${who(r)}: ${r.rcStatus}, messageId=${r.messageId}`).join("\n"));
+  }
+  if (!followUpQueued && (stuck.length > 0 || checkErrors.length > 0)) {
+    problems.push(`${stuck.length + checkErrors.length} SMS still not confirmed delivered after the last re-check — check RingCentral or contact the patient:\n` +
+      [...stuck.map(s => `  - ${who(s)}: status=${s.rcStatus}, messageId=${s.messageId}`),
+       ...checkErrors.map(e => `  - ${who(e)}: status check error: ${e.error}, messageId=${e.messageId}`)].join("\n"));
+  }
+  if (problems.length > 0) {
+    const alertBody = `SMS Delivery Verification (${label}) — ${sentMessages.length} checked, ${delivered.length} delivered, ${problems.length} issue(s):\n\n${problems.join("\n\n")}`;
+    console.error(`[sms-verify] ALERT:\n${alertBody}`);
+    await notifyError("SMS Delivery Issues", alertBody, { tags: ["warning", "sms"] });
+  }
+
+  return {
+    round,
+    total: sentMessages.length,
+    delivered: delivered.length,
+    failed: failed.length,
+    retried: resent.length,
+    retryFailed: resendErrors.length + failedAgain.length,
+    stuck: stuck.length,
+    checkErrors: checkErrors.length,
+    followUp: followUpQueued ? pending.length : 0,
+  };
+}
+
 function startSmsVerifyWorker() {
-  const { checkMessageStatus, sendSMS, buildReorderText } = require("./sms");
+  const { checkMessageStatus, sendSMS } = require("./sms");
   const { notifyError } = require("./notify");
 
   _smsVerifyWorker = new Worker(
     "reorder-sms-verify",
     async (job) => {
-      const { sentMessages } = job.data;
-      console.log(`[sms-verify] Verifying ${sentMessages.length} message(s) (attempt ${job.attemptsMade + 1})`);
-
-      const delivered = [];
-      const failed = [];
-      const stuck = [];
-      const checkErrors = [];
-
-      for (const msg of sentMessages) {
-        try {
-          const status = await checkMessageStatus(msg.messageId);
-          if (status.status === "Delivered") {
-            delivered.push(msg);
-          } else if (status.status === "DeliveryFailed" || status.status === "SendingFailed") {
-            failed.push({ ...msg, rcStatus: status.status });
-          } else {
-            // Still Queued or Sent after 10 min — suspicious
-            stuck.push({ ...msg, rcStatus: status.status });
-          }
-        } catch (err) {
-          console.error(`[sms-verify] Error checking messageId ${msg.messageId}: ${err.message}`);
-          checkErrors.push({ ...msg, error: err.message });
-        }
-
-        // Small delay between RC API calls to respect rate limits
-        await new Promise(r => setTimeout(r, 500));
-      }
-
-      console.log(`[sms-verify] Results: ${delivered.length} delivered, ${failed.length} failed, ${stuck.length} stuck, ${checkErrors.length} check errors`);
-
-      // ─── Auto-retry failed deliveries ───
-      const retryResults = [];
-      for (const msg of failed) {
-        try {
-          console.log(`[sms-verify] Retrying SMS for ${msg.name} (UID ${msg.uid}) — original status: ${msg.rcStatus}`);
-          const retryResult = await sendSMS(msg.phone, msg.originalMessage, { patientName: msg.name });
-          retryResults.push({ ...msg, retried: true, newMessageId: retryResult.messageId });
-        } catch (err) {
-          console.error(`[sms-verify] Retry failed for ${msg.name} (UID ${msg.uid}): ${err.message}`);
-          retryResults.push({ ...msg, retried: false, retryError: err.message });
-        }
-        await new Promise(r => setTimeout(r, 1000));
-      }
-
-      // ─── Alert on anything that needs human attention ───
-      const problems = [];
-
-      const retryFailures = retryResults.filter(r => !r.retried);
-      if (retryFailures.length > 0) {
-        problems.push(`${retryFailures.length} SMS failed delivery AND retry failed:\n` +
-          retryFailures.map(r => `  - ${r.name} (${r.uid}): ${r.rcStatus} → retry error: ${r.retryError}`).join("\n"));
-      }
-
-      if (stuck.length > 0) {
-        problems.push(`${stuck.length} SMS still not delivered after 10 min (RC may be slow):\n` +
-          stuck.map(s => `  - ${s.name} (${s.uid}): status=${s.rcStatus}, messageId=${s.messageId}`).join("\n"));
-      }
-
-      if (checkErrors.length > 0) {
-        problems.push(`${checkErrors.length} SMS could not be status-checked:\n` +
-          checkErrors.map(e => `  - ${e.name} (${e.uid}): ${e.error}`).join("\n"));
-      }
-
-      if (problems.length > 0) {
-        const alertBody = `SMS Delivery Verification — ${sentMessages.length} total, ${delivered.length} delivered, ${problems.length} issue(s):\n\n${problems.join("\n\n")}`;
-        console.error(`[sms-verify] ALERT:\n${alertBody}`);
-        await notifyError("SMS Delivery Issues", alertBody, { tags: ["warning", "sms"] });
-      }
-
-      const retrySuccesses = retryResults.filter(r => r.retried);
-      if (retrySuccesses.length > 0) {
-        console.log(`[sms-verify] ${retrySuccesses.length} failed SMS(s) re-sent successfully`);
-      }
-
-      return {
-        total: sentMessages.length,
-        delivered: delivered.length,
-        failed: failed.length,
-        retried: retrySuccesses.length,
-        retryFailed: retryFailures.length,
-        stuck: stuck.length,
-        checkErrors: checkErrors.length,
-      };
+      const { sentMessages, round = 0 } = job.data;
+      return verifySmsBatch(sentMessages, round, {
+        checkMessageStatus,
+        sendSMS,
+        notifyError,
+        enqueueFollowUp: (msgs, delayMs, nextRound) => enqueueSmsBatchVerification(msgs, delayMs, nextRound),
+      });
     },
     { connection, concurrency: 1 }
   );
 
   _smsVerifyWorker.on("completed", (job, result) => {
-    console.log(`[sms-verify] Batch verification complete: ${result.delivered}/${result.total} delivered, ${result.retried} retried, ${result.stuck} stuck`);
+    console.log(`[sms-verify] Verification complete (round ${result.round}): ${result.delivered}/${result.total} delivered, ${result.retried} re-sent, ${result.stuck} still pending, ${result.followUp} queued for re-check`);
   });
 
   _smsVerifyWorker.on("failed", (job, err) => {
@@ -486,17 +523,18 @@ function startSmsVerifyWorker() {
 
 /**
  * Enqueue a batch of sent messageIds for delivery verification.
- * @param {Array<{uid, messageId, phone, name, originalMessage}>} sentMessages
+ * @param {Array<{uid, messageId, phone, name, originalMessage, resends?}>} sentMessages
  * @param {number} delayMs — how long to wait before checking (default 10 min)
+ * @param {number} round — 0 for the first check, 1.. for follow-ups
  */
-async function enqueueSmsBatchVerification(sentMessages, delayMs = 10 * 60 * 1000) {
+async function enqueueSmsBatchVerification(sentMessages, delayMs = 10 * 60 * 1000, round = 0) {
   if (!sentMessages || sentMessages.length === 0) return null;
   const job = await smsVerifyQueue.add(
-    "verify-sms-batch",
-    { sentMessages },
+    round === 0 ? "verify-sms-batch" : "verify-sms-followup",
+    { sentMessages, round },
     { delay: delayMs }
   );
-  console.log(`[sms-verify] Enqueued batch verification for ${sentMessages.length} message(s) (delay: ${delayMs / 1000}s, jobId: ${job.id})`);
+  console.log(`[sms-verify] Enqueued ${round === 0 ? "batch verification" : `follow-up ${round}`} for ${sentMessages.length} message(s) (delay: ${delayMs / 1000}s, jobId: ${job.id})`);
   return job.id;
 }
 
@@ -565,6 +603,8 @@ module.exports = {
   enqueueReorderPatient,
   enqueueConfirmationSms,
   enqueueSmsBatchVerification,
+  verifySmsBatch,
+  FOLLOW_UP_DELAYS_MS,
   checkBatchComplete,
   queueHealthCheck,
   closeQueue,
