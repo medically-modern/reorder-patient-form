@@ -600,6 +600,13 @@ function togglePanel(id, btn) {
       return;
     }
     hideAddressError();
+    if (aptPendingNotAdded()) {
+      // Block close — apartment typed but ADD not pressed
+      panel.classList.add("open");
+      btn.textContent = "Done";
+      showAptPending();
+      return;
+    }
     if (input.value.trim() && state.addressSelectedFromGoogle) {
       state.addressChanged = true;
       state.newAddress = input.value.trim();
@@ -1194,12 +1201,20 @@ async function handleSubmit() {
     const addrPanel = document.getElementById("panel-addr");
     if (!addrPanel.classList.contains("open")) {
       addrPanel.classList.add("open");
-      const addrBtn = addrPanel.closest(".card").querySelector(".card-edit");
+      const addrBtn = addrPanel.closest(".card").querySelector(".edit-btn");
       if (addrBtn) addrBtn.textContent = "Done";
     }
     showAddressError();
     return;
   }
+
+  // Block if an apartment was typed but ADD was never pressed — it would be
+  // dropped from the shipping address without the patient knowing.
+  if (aptPendingNotAdded()) {
+    showAptPending();
+    return;
+  }
+  hideAptPending();
 
   const btn = document.getElementById("submit-btn");
   btn.disabled = true;
@@ -1430,6 +1445,8 @@ function attachAutocomplete() {
     state.addressChanged = true;
     // Store the base address (without apt) for the apartment addon
     state._baseAddress = input.value;
+    state._appliedApt = null;
+    hideAptPending();
     if (place.geometry?.location) {
       state.addressCoords.lat = place.geometry.location.lat();
       state.addressCoords.lng = place.geometry.location.lng();
@@ -1450,8 +1467,22 @@ function attachAutocomplete() {
       // Remove any previous success message
       const prevSuccess = aptAddon.querySelector(".apt-addon-success");
       if (prevSuccess) prevSuccess.remove();
+    } else if (aptAddon) {
+      // The picked address already carries a unit: no add-on, and no stale
+      // apartment left in the box to block submit.
+      aptAddon.classList.add("hidden");
+      document.getElementById("apt-input").value = "";
     }
   });
+
+  const aptInput = document.getElementById("apt-input");
+  if (aptInput && !aptInput._pendingWired) {
+    aptInput._pendingWired = true;
+    aptInput.addEventListener("input", hideAptPending);
+    aptInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); addApartment(); }
+    });
+  }
 
   // Store autocomplete reference for apartment re-query
   state._autocompleteInstance = autocomplete;
@@ -1472,18 +1503,51 @@ function updateAddressDisplay(addr) {
   }
 }
 
+// "#3", "Apt 4", "Unit 2" -> "3", "4", "2" so we never write "Apt #3" / "Apt Apt 4"
+function normalizeApt(raw) {
+  return (raw || "")
+    .trim()
+    .replace(/^(apt|apartment|unit|ste|suite|#)\.?\s*#?\s*/i, "")
+    .trim();
+}
+
+// True when the apartment box is showing and holds a unit that is not in the
+// address we will submit — i.e. the patient typed it but never pressed ADD.
+// Submitting then would silently ship without the unit.
+function aptPendingNotAdded() {
+  const addon = document.getElementById("apt-addon");
+  if (!addon || addon.classList.contains("hidden")) return false;
+  const v = normalizeApt(document.getElementById("apt-input")?.value);
+  return !!v && v !== state._appliedApt;
+}
+
+function showAptPending() {
+  const panel = document.getElementById("panel-addr");
+  if (!panel.classList.contains("open")) {
+    panel.classList.add("open");
+    const editBtn = panel.closest(".card").querySelector(".edit-btn");
+    if (editBtn) editBtn.textContent = "Done";
+  }
+  document.getElementById("apt-addon-pending")?.classList.remove("hidden");
+  const card = panel.closest(".card");
+  card.classList.remove("shake");
+  card.offsetHeight;
+  card.classList.add("shake");
+  document.getElementById("apt-input")?.focus();
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function hideAptPending() {
+  document.getElementById("apt-addon-pending")?.classList.add("hidden");
+}
+
 // Inserts "Apt X" into the address the patient PICKED from Google Places.
 // It deliberately does NOT re-geocode the result: Geocoder on "<street> Apt X,
 // <rest>" was seen to return a different building (another borough, ZIP and
 // coordinates) or to drop the unit while the form said "Address updated". The
 // building does not move when a unit is added, so the pick's coordinates stand.
 function addApartment() {
-  const aptInput = document.getElementById("apt-input");
-  // "#3", "Apt 4", "Unit 2" -> "3", "4", "2" so we never write "Apt #3" / "Apt Apt 4"
-  const aptVal = (aptInput?.value || "")
-    .trim()
-    .replace(/^(apt|apartment|unit|ste|suite|#)\.?\s*#?\s*/i, "")
-    .trim();
+  const aptVal = normalizeApt(document.getElementById("apt-input")?.value);
   if (!aptVal) return;
 
   const errEl = document.getElementById("apt-addon-error");
@@ -1513,6 +1577,8 @@ function addApartment() {
   state.newAddress = addrWithApt;
   state.addressSelectedFromGoogle = true;
   state.addressChanged = true;
+  state._appliedApt = aptVal;
+  hideAptPending();
 
   updateAddressDisplay(addrWithApt);
   checkApartmentWarning(addrWithApt);
