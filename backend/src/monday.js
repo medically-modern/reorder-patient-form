@@ -5,13 +5,24 @@ const {
   INSURANCE_RESPONSE_INDEX,
 } = require("./config");
 const { enqueueWriteAndWait, startWorker, startReorderWorker, startSmsWorker, startSmsVerifyWorker, startOopRefreshWorker } = require("./queue");
-const { notifyMondayError } = require("./notify");
+const { notifyMondayError, notifyError } = require("./notify");
+const { createFridayForward } = require("./fridayForward");
 const { readBenefitsSnapshot } = require("./oopEstimator");
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
 const API_URL = "https://api.monday.com/v2";
 
 let _queueEnabled = false;
+
+// The Friday forward (src/fridayForward.js): every mutation Monday accepts through mondayQuery below, and
+// every file it accepts through uploadFileToMonday, is handed to Friday (Medically Modern's own board app,
+// which shadows the Subscription board until Monday is left) afterwards, exactly as sent, in the background.
+// It never throws and never delays Monday's answer. OFF unless FRIDAY_FORWARD=1 with FRIDAY_URL,
+// FRIDAY_API_KEY and FRIDAY_BOARD_IDS (18407459988). Its alerts go out through this service's own ntfy.
+const fridayForward = createFridayForward({
+  env: process.env, log: console.log, service: "reorder-patient-form",
+  alert: (title, body) => notifyError(title, body),
+});
 
 // ─── Input validation ───
 
@@ -74,6 +85,7 @@ async function mondayQuery(query, variables = {}, _attempt = 1) {
     throw new Error(`Monday API error: ${JSON.stringify(data.errors)}`);
   }
 
+  fridayForward.onMutation({ query, variables, data: data.data }); // Monday said yes: Friday hears the same write
   return data.data;
 }
 
@@ -695,6 +707,8 @@ async function uploadFileToMonday(itemId, columnId, fileBuffer, fileName) {
     }
 
     console.log(`[monday] File "${fileName}" uploaded successfully to item ${itemId}`);
+    // Monday took the file: Friday gets the same bytes on the same item and column, in the background.
+    if (data.data?.add_file_to_column?.id) fridayForward.onFile({ itemId, column: columnId, filename: fileName, bytes: fileBuffer });
     return { success: true, fileId: data.data?.add_file_to_column?.id };
   } catch (err) {
     console.error(`[monday] File upload failed: ${err.message}`);
@@ -1000,6 +1014,7 @@ function initWriteQueue() {
 
 module.exports = {
   mondayQuery,
+  fridayForward,
   findPatientByPhone,
   findPatientByUid,
   getPatientItemById,

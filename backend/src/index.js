@@ -122,6 +122,9 @@ app.get("/health", async (req, res) => {
       return cfg.url && cfg.adminKey ? "configured" : "not configured (OOP_ESTIMATOR_URL / OOP_ESTIMATOR_KEY) — column fallback only";
     })(),
     oopWebhook: "retired (Stedi backend writes OOP Estimate)",
+    // The Friday forward (src/fridayForward.js): on or off, the boards it names, and its counts. A give-up is
+    // also pushed, but a forward switched off or misconfigured says so only here.
+    friday: require("./monday").fridayForward.status(),
     cron: "active",
     timestamp: new Date().toISOString(),
   });

@@ -216,6 +216,15 @@ than **48 hours** is treated as untrustworthy rather than shown as fact.
 - ⚠️ **Patient data is deliberately NOT cached** (`docs/CACHE-LOGIC.md`): a 15-minute Redis cache
   was removed because staff would fix something in Monday and the patient would still see the old
   value. Don't reintroduce one without reading that file.
+- **The Friday forward** (`backend/src/fridayForward.js`, the same CommonJS module josh-monday-automations
+  carries): every mutation Monday accepts through `mondayQuery`, and every file it accepts through
+  `uploadFileToMonday`, is handed afterwards to Friday (Medically Modern's own board app, which shadows the
+  Subscription board until Monday is left) at `POST {FRIDAY_URL}/v1/monday/write` and its file route. It is
+  queued in memory, drained in order in the background, and never throws or delays Monday's answer; a give-up
+  is pushed through `notify.js`. **OFF unless `FRIDAY_FORWARD=1` with `FRIDAY_URL`, `FRIDAY_API_KEY` and
+  `FRIDAY_BOARD_IDS=18407459988`** (Railway variables, never in this public tree). `/health` shows it under
+  `friday`. ⚠️ Keep `mondayQuery` and `uploadFileToMonday` the only Monday write paths:
+  `test/fridayForwardWiring.test.js` fails on a new one.
 - **Alerts go to ntfy** (`backend/src/notify.js`). ⚠️ `NTFY_TOPIC` is the *only* access control
   ntfy has, so it is **deliberately not in this public repo** — a Railway variable. Unset disables
   notifications rather than falling back to a guessable topic.
