@@ -1472,93 +1472,56 @@ function updateAddressDisplay(addr) {
   }
 }
 
+// Inserts "Apt X" into the address the patient PICKED from Google Places.
+// It deliberately does NOT re-geocode the result: Geocoder on "<street> Apt X,
+// <rest>" was seen to return a different building (another borough, ZIP and
+// coordinates) or to drop the unit while the form said "Address updated". The
+// building does not move when a unit is added, so the pick's coordinates stand.
 function addApartment() {
   const aptInput = document.getElementById("apt-input");
-  const aptVal = aptInput?.value?.trim();
+  // "#3", "Apt 4", "Unit 2" -> "3", "4", "2" so we never write "Apt #3" / "Apt Apt 4"
+  const aptVal = (aptInput?.value || "")
+    .trim()
+    .replace(/^(apt|apartment|unit|ste|suite|#)\.?\s*#?\s*/i, "")
+    .trim();
   if (!aptVal) return;
 
   const errEl = document.getElementById("apt-addon-error");
-  const btn = document.getElementById("apt-add-btn");
   errEl.classList.add("hidden");
 
   // Remove any previous success message
   const prevSuccess = document.querySelector(".apt-addon-success");
   if (prevSuccess) prevSuccess.remove();
 
+  // Always build from the picked address, so pressing ADD twice replaces the
+  // unit instead of stacking "Apt 3 Apt 4".
   const baseAddr = state._baseAddress;
   if (!baseAddr) {
     errEl.classList.remove("hidden");
     return;
   }
 
-  // Build the address with apartment inserted before the first comma
+  // Insert the apartment before the first comma
   const fc = baseAddr.indexOf(",");
-  let addrWithApt;
-  if (fc > 0) {
-    addrWithApt = baseAddr.slice(0, fc).trim() + " Apt " + aptVal + baseAddr.slice(fc);
-  } else {
-    addrWithApt = baseAddr + " Apt " + aptVal;
-  }
+  const addrWithApt = fc > 0
+    ? baseAddr.slice(0, fc).trim() + " Apt " + aptVal + baseAddr.slice(fc)
+    : baseAddr + " Apt " + aptVal;
 
-  btn.disabled = true;
-  btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i>';
+  // Coordinates stay as set by place_changed for this pick.
+  const input = document.getElementById("address-input");
+  input.value = addrWithApt;
+  state.newAddress = addrWithApt;
+  state.addressSelectedFromGoogle = true;
+  state.addressChanged = true;
 
-  // Use Google Geocoder to validate the new address
-  if (window.google?.maps?.Geocoder) {
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ address: addrWithApt }, (results, status) => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="ti ti-plus"></i> ADD';
+  updateAddressDisplay(addrWithApt);
+  checkApartmentWarning(addrWithApt);
 
-      if (status === "OK" && results?.length > 0) {
-        const result = results[0];
-        const formatted = result.formatted_address
-          .replace(/(\b\d{5})-\d{4}\b/g, "$1")
-          .replace(/#(\d)/g, "Apt $1");
-
-        // Update state
-        const input = document.getElementById("address-input");
-        input.value = formatted;
-        state.newAddress = formatted;
-        state.addressSelectedFromGoogle = true;
-        state.addressChanged = true;
-        if (result.geometry?.location) {
-          state.addressCoords.lat = result.geometry.location.lat();
-          state.addressCoords.lng = result.geometry.location.lng();
-        }
-
-        // Update display
-        updateAddressDisplay(formatted);
-        checkApartmentWarning(formatted);
-
-        // Show success
-        const successEl = document.createElement("div");
-        successEl.className = "apt-addon-success";
-        successEl.innerHTML = '<i class="ti ti-check"></i> Address updated';
-        document.getElementById("apt-addon").appendChild(successEl);
-        setTimeout(() => successEl.remove(), 3000);
-      } else {
-        errEl.classList.remove("hidden");
-      }
-    });
-  } else {
-    // Fallback: just insert the apartment text directly
-    btn.disabled = false;
-    btn.innerHTML = '<i class="ti ti-plus"></i> ADD';
-    const input = document.getElementById("address-input");
-    input.value = addrWithApt;
-    state.newAddress = addrWithApt;
-    state.addressSelectedFromGoogle = true;
-    state.addressChanged = true;
-    updateAddressDisplay(addrWithApt);
-    checkApartmentWarning(addrWithApt);
-
-    const successEl = document.createElement("div");
-    successEl.className = "apt-addon-success";
-    successEl.innerHTML = '<i class="ti ti-check"></i> Address updated';
-    document.getElementById("apt-addon").appendChild(successEl);
-    setTimeout(() => successEl.remove(), 3000);
-  }
+  const successEl = document.createElement("div");
+  successEl.className = "apt-addon-success";
+  successEl.innerHTML = '<i class="ti ti-check"></i> Address updated';
+  document.getElementById("apt-addon").appendChild(successEl);
+  setTimeout(() => successEl.remove(), 3000);
 }
 
 // ═══════════════════════════════════════════════════════
