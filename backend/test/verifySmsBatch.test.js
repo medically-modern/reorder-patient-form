@@ -93,3 +93,37 @@ test("a re-send that cannot be sent is alerted", async () => {
   assert.equal(d.followUps.length, 0);
   assert.match(d.alerts[0], /re-send could not be sent/);
 });
+
+// ─── "Landline" numbers: both tries failed with a can't-text code ───
+
+function codedDeps(results) {
+  const d = deps({});
+  d.landlines = [];
+  d.checkMessageStatus = async (id) => results[id];
+  d.reportLandlines = async (l) => { d.landlines.push(...l); };
+  return d;
+}
+
+test("two can't-text codes in a row → reported as a landline, not alerted as a failure", async () => {
+  const d = codedDeps({ a: { status: "DeliveryFailed", errorCode: "SMS-CAR-411" } });
+  await verifySmsBatch([msg("A", "a")], 0, d);
+  assert.deepEqual(d.sends, ["A"], "a can't-text code is still re-sent once");
+  const resent = d.followUps[0].msgs[0];
+  assert.deepEqual(resent.errorCodes, ["SMS-CAR-411"]);
+
+  const d2 = codedDeps({ "new-1": { status: "DeliveryFailed", errorCode: "SMS-CAR-400" } });
+  const r = await verifySmsBatch([resent], 1, d2);
+  assert.equal(r.landlines, 1);
+  assert.deepEqual(d2.landlines.map(l => l.errorCodes), [["SMS-CAR-411", "SMS-CAR-400"]]);
+  assert.equal(d2.alerts.length, 0, "a landline is not a delivery failure alert");
+});
+
+test("a temporary carrier code on either try → still a failure alert, not a landline", async () => {
+  const d = codedDeps({ b: { status: "DeliveryFailed", errorCode: "SMS-CAR-411" } });
+  d.checkMessageStatus = async () => ({ status: "DeliveryFailed", errorCode: "SMS-CAR-431" });
+  const r = await verifySmsBatch([msg("B", "b", { resends: 1, errorCodes: ["SMS-CAR-411"] })], 1, d);
+  assert.equal(r.landlines, 0);
+  assert.equal(d.landlines.length, 0);
+  assert.equal(d.alerts.length, 1);
+  assert.match(d.alerts[0], /SMS-CAR-431/);
+});

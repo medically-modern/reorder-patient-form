@@ -164,6 +164,7 @@ function startReorderWorker() {
 
       // 6. Store result for batch verification
       const result = {
+        itemId,
         uid,
         name,
         phone,
@@ -364,6 +365,18 @@ async function enqueueConfirmationSms(itemId, optOuts = {}, delayMs = 20_000) {
 // Alerts go out for what needs a human: a re-send that could not be sent, a message that
 // failed again after its re-send, and anything still unsettled after the last follow-up.
 
+// RingCentral delivery error codes that mean the NUMBER cannot take texts, as opposed to the
+// carrier refusing this one message (spam filter, no reason, outage, volume — those are retried).
+// From RingCentral's "Handling SMS Messaging Errors" guide:
+//   SMS-CAR-400  carrier does not support this type of messaging (RC: "call the recipient")
+//   SMS-CAR-411  destination invalid, unallocated, or does not support this kind of messaging
+// A number is treated as a "landline" only when the original text AND its re-send both came
+// back with one of these — a single bad code is not proof (a number has been seen to take
+// texts in October and return SMS-CAR-400 in November). Nothing is skipped because of it:
+// the patient is still texted next cycle; the result is noted on the item and emailed.
+const CANT_TEXT_CODES = new Set(["SMS-CAR-400", "SMS-CAR-411"]);
+const isCantTextCode = (code) => CANT_TEXT_CODES.has(code);
+
 const FOLLOW_UP_DELAYS_MS = [30 * 60 * 1000, 2 * 60 * 60 * 1000, 6 * 60 * 60 * 1000]; // +30m, +2h, +6h
 const MAX_RESENDS = 1;
 
@@ -389,6 +402,7 @@ const who = (m) => `${m.name} (${m.uid})`;
  */
 async function verifySmsBatch(sentMessages, round, deps) {
   const { checkMessageStatus, sendSMS, notifyError, enqueueFollowUp } = deps;
+  const reportLandlines = deps.reportLandlines || (async () => {});
   const sleep = deps.sleep || ((ms) => new Promise(r => setTimeout(r, ms)));
   const label = round === 0 ? "first check" : `follow-up ${round}/${FOLLOW_UP_DELAYS_MS.length}`;
   console.log(`[sms-verify] Verifying ${sentMessages.length} message(s) — ${label}`);
@@ -404,7 +418,7 @@ async function verifySmsBatch(sentMessages, round, deps) {
       if (status.status === "Delivered") {
         delivered.push(msg);
       } else if (status.status === "DeliveryFailed" || status.status === "SendingFailed") {
-        failed.push({ ...msg, rcStatus: status.status });
+        failed.push({ ...msg, rcStatus: status.status, errorCodes: [...(msg.errorCodes || []), status.errorCode || null] });
       } else {
         stuck.push({ ...msg, rcStatus: status.status }); // Queued / Sent — not settled yet
       }
@@ -424,9 +438,12 @@ async function verifySmsBatch(sentMessages, round, deps) {
   const resent = [];
   const resendErrors = [];
   const failedAgain = [];
+  const landlines = [];
   for (const msg of failed) {
     if ((msg.resends || 0) >= MAX_RESENDS) {
-      failedAgain.push(msg);
+      const codes = msg.errorCodes || [];
+      if (codes.length > MAX_RESENDS && codes.every(isCantTextCode)) landlines.push(msg);
+      else failedAgain.push(msg);
       continue;
     }
     try {
@@ -452,6 +469,20 @@ async function verifySmsBatch(sentMessages, round, deps) {
     for (const m of stuck) console.log(`[sms-verify] Still ${m.rcStatus} on ${label}: ${who(m)}, messageId=${m.messageId} — re-checking in ${nextDelay / 60000} min`);
   }
 
+  // ─── "Landline" numbers: noted on the item and emailed, NOT alerted as a failure ───
+  if (landlines.length > 0) {
+    console.log(`[sms-verify] ${landlines.length} number(s) cannot receive texts (${label}): ` +
+      landlines.map(l => `${who(l)} [${l.errorCodes.join(", ")}]`).join("; "));
+    try {
+      await reportLandlines(landlines);
+    } catch (err) {
+      console.error(`[sms-verify] Could not report landline numbers: ${err.message}`);
+      await notifyError("Landline report failed",
+        `${landlines.length} patient number(s) could not receive the reorder text, but noting/emailing them failed: ${err.message}\n` +
+        landlines.map(l => `  - ${who(l)}: ${l.errorCodes.join(", ")}`).join("\n"), { tags: ["warning", "sms"] });
+    }
+  }
+
   // ─── Alert on anything that needs human attention ───
   const problems = [];
   if (resendErrors.length > 0) {
@@ -460,7 +491,7 @@ async function verifySmsBatch(sentMessages, round, deps) {
   }
   if (failedAgain.length > 0) {
     problems.push(`${failedAgain.length} SMS failed again after being re-sent — the patient has NOT received the reorder text:\n` +
-      failedAgain.map(r => `  - ${who(r)}: ${r.rcStatus}, messageId=${r.messageId}`).join("\n"));
+      failedAgain.map(r => `  - ${who(r)}: ${r.rcStatus}${(r.errorCodes || []).filter(Boolean).length ? ` [${r.errorCodes.join(", ")}]` : ""}, messageId=${r.messageId}`).join("\n"));
   }
   if (!followUpQueued && (stuck.length > 0 || checkErrors.length > 0)) {
     problems.push(`${stuck.length + checkErrors.length} SMS still not confirmed delivered after the last re-check — check RingCentral or contact the patient:\n` +
@@ -480,6 +511,7 @@ async function verifySmsBatch(sentMessages, round, deps) {
     failed: failed.length,
     retried: resent.length,
     retryFailed: resendErrors.length + failedAgain.length,
+    landlines: landlines.length,
     stuck: stuck.length,
     checkErrors: checkErrors.length,
     followUp: followUpQueued ? pending.length : 0,
@@ -489,6 +521,7 @@ async function verifySmsBatch(sentMessages, round, deps) {
 function startSmsVerifyWorker() {
   const { checkMessageStatus, sendSMS } = require("./sms");
   const { notifyError } = require("./notify");
+  const { reportLandlines } = require("./landlines");
 
   _smsVerifyWorker = new Worker(
     "reorder-sms-verify",
@@ -498,6 +531,7 @@ function startSmsVerifyWorker() {
         checkMessageStatus,
         sendSMS,
         notifyError,
+        reportLandlines,
         enqueueFollowUp: (msgs, delayMs, nextRound) => enqueueSmsBatchVerification(msgs, delayMs, nextRound),
       });
     },
@@ -605,6 +639,7 @@ module.exports = {
   enqueueSmsBatchVerification,
   verifySmsBatch,
   FOLLOW_UP_DELAYS_MS,
+  CANT_TEXT_CODES,
   checkBatchComplete,
   queueHealthCheck,
   closeQueue,

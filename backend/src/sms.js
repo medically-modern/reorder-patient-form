@@ -300,6 +300,7 @@ function buildConfirmationText(opts) {
  * @param {string} messageId - The RC messageId returned from sendSMS
  * @returns {{ messageId, status, to, direction, lastModifiedTime }}
  *   status is one of: Queued, Sent, Delivered, DeliveryFailed, SendingFailed
+ *   errorCode is RingCentral's deliveryErrorCode (e.g. SMS-CAR-411) on a failed text, else null
  */
 async function checkMessageStatus(messageId) {
   const token = await getAccessToken();
@@ -316,6 +317,7 @@ async function checkMessageStatus(messageId) {
       messageId: data.id,
       status: data.messageStatus,
       to: data.to?.[0]?.phoneNumber || null,
+      errorCode: data.deliveryErrorCode || null,
       direction: data.direction,
       lastModifiedTime: data.lastModifiedTime,
     };
@@ -337,6 +339,7 @@ async function checkMessageStatus(messageId) {
         messageId: data.id,
         status: data.messageStatus,
         to: data.to?.[0]?.phoneNumber || null,
+        errorCode: data.deliveryErrorCode || null,
         direction: data.direction,
         lastModifiedTime: data.lastModifiedTime,
       };

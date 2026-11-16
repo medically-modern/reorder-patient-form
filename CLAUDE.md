@@ -170,6 +170,14 @@ Queued/Sent, re-sent, or un-checkable is re-checked at +30m, +2h and +6h (`FOLLO
 and an ntfy alert fires only for what is still unconfirmed after the last re-check, a re-send
 that failed again, or a re-send that could not be sent. `verifySmsBatch()` is the testable core.
 
+⚠️ **"Landline" numbers are not failures.** When the original text AND its re-send both come back
+with a RingCentral `deliveryErrorCode` that means the number cannot take texts (`CANT_TEXT_CODES`
+in `queue.js`: `SMS-CAR-400`, `SMS-CAR-411`), `src/landlines.js` posts a Monday update on the item
+naming that exact number and code (a patient may have other numbers that do take texts) and
+emails the list (`LANDLINE_EMAIL_TO`, sent via Gmail as `EMAIL_FROM` with the `GOOGLE_*` refresh
+token). They are left out of the "SMS Delivery Issues" alert and are **not** skipped next cycle.
+Any other code (431 no reason, 430 spam, 5xx…) stays a normal failure. Email unset → the list goes to ntfy.
+
 ---
 
 ## 5. Auth — a direct, reusable token
