@@ -3,8 +3,9 @@
 // AND its re-send both failed with a "this number can't take texts" code (CANT_TEXT_CODES).
 // These are not treated as send failures. Two things happen, and the patient is NOT skipped
 // next cycle (the number may start taking texts again):
-//   1. a Monday update on the item names the exact number and the code, because a patient can
-//      have more than one number saved and another one may take texts;
+//   1. "Can Text" (COLUMNS.CAN_TEXT) is set to No — the index is read from the live board, never
+//      inferred — and a Monday update on the item names the exact number and the code that caused
+//      it, because a patient can have more than one number saved;
 //   2. one email lists every such patient in this pass, sent through Gmail as EMAIL_FROM.
 //
 // Email env (Railway variables): GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN,
@@ -42,21 +43,21 @@ function emailConfig(env = process.env) {
 
 function updateBody(l, today) {
   return `📵 Reorder text could not be delivered to ${formatPhone(l.phone)} on ${today} — tried ${l.errorCodes.length} times. ` +
-    `RingCentral: ${describeCodes(l.errorCodes)}. Treat this number as a landline / can't text. ` +
+    `RingCentral: ${describeCodes(l.errorCodes)}. "Can Text" set to No because of this number (landline / can't text). ` +
     `Other numbers on this profile were not tested. The patient will still be texted next cycle.`;
 }
 
 function buildEmail(landlines, today) {
   const subject = `Landline patients - ${landlines.length} could not receive the reorder text (${today})`;
   const rows = landlines.map(l =>
-    `- ${l.name} (UID ${l.uid}${l.itemId ? `, item ${l.itemId}` : ""}) — ${formatPhone(l.phone)} — ${describeCodes(l.errorCodes)}`);
+    `- ${l.name} (UID ${l.uid}${l.itemId ? `, item ${l.itemId}` : ""}) - ${formatPhone(l.phone)} - ${describeCodes(l.errorCodes)}`);
   const text = [
     `These patients' reorder text failed twice (original + re-send) with a RingCentral code that means`,
     `the number cannot receive texts. Please call them to confirm their reorder.`,
     ``,
     ...rows,
     ``,
-    `Each patient's Monday item has an update naming the number that failed. They are not removed`,
+    `Each patient's "Can Text" is set to No, with an update naming the number that failed. They are not removed`,
     `from future reorder texts.`,
   ].join("\n");
   return { subject, text };
@@ -103,16 +104,39 @@ async function sendGmail(cfg, subject, text, fetchFn = fetch) {
  */
 async function reportLandlines(landlines, deps = {}) {
   if (!landlines || landlines.length === 0) return { noted: 0, emailed: false };
-  const mondayQuery = deps.mondayQuery || require("./monday").mondayQuery;
+  const monday = deps.mondayQuery ? null : require("./monday");
+  const mondayQuery = deps.mondayQuery || monday.mondayQuery;
+  const getStatusIndexMap = deps.getStatusIndexMap || monday.getStatusIndexMap;
+  const { COLUMNS, SUBSCRIPTION_BOARD_ID } = require("./config");
   const notifyError = deps.notifyError || require("./notify").notifyError;
   const env = deps.env || process.env;
   const today = (deps.now || new Date()).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" });
 
   // 1. Note the number on each item. One failure does not stop the rest or the email.
   let noted = 0;
+  let flagged = 0;
   const noteErrors = [];
+  let noIndex = null;
+  try {
+    noIndex = (await getStatusIndexMap())?.[COLUMNS.CAN_TEXT]?.["no"];
+    if (noIndex === undefined) noIndex = null;
+  } catch (err) {
+    noteErrors.push(`Can Text labels unreadable: ${err.message}`);
+  }
+  if (noIndex === null && !noteErrors.length) noteErrors.push(`"Can Text" column has no "No" label — not set`);
   for (const l of landlines) {
     if (!l.itemId) { noteErrors.push(`${l.uid}: no itemId on this message`); continue; }
+    if (noIndex !== null) {
+      try {
+        const r = await mondayQuery(
+          `mutation ($b: ID!, $id: ID!, $c: String!, $v: JSON!) { change_column_value(board_id: $b, item_id: $id, column_id: $c, value: $v) { id } }`,
+          { b: String(SUBSCRIPTION_BOARD_ID), id: String(l.itemId), c: COLUMNS.CAN_TEXT, v: JSON.stringify({ index: noIndex }) });
+        if (!r?.change_column_value?.id) throw new Error("Monday returned no item id");
+        flagged++;
+      } catch (err) {
+        noteErrors.push(`${l.uid} Can Text: ${err.message}`);
+      }
+    }
     try {
       const r = await mondayQuery(
         `mutation ($id: ID!, $body: String!) { create_update(item_id: $id, body: $body) { id } }`,
@@ -140,11 +164,11 @@ async function reportLandlines(landlines, deps = {}) {
     await notifyError("Landline patients",
       `${subject}\n\n${text}` +
       (emailed ? "" : `\n\nEmail NOT sent: ${emailError}`) +
-      (noteErrors.length ? `\n\nMonday note failed for: ${noteErrors.join("; ")}` : ""),
+      (noteErrors.length ? `\n\nMonday write failed for: ${noteErrors.join("; ")}` : ""),
       { tags: ["telephone_receiver"] });
   }
-  console.log(`[landlines] ${landlines.length} patient(s): ${noted} noted on Monday, email ${emailed ? "sent" : `not sent (${emailError})`}`);
-  return { noted, emailed, emailError, noteErrors };
+  console.log(`[landlines] ${landlines.length} patient(s): Can Text=No on ${flagged}, ${noted} noted on Monday, email ${emailed ? "sent" : `not sent (${emailError})`}`);
+  return { flagged, noted, emailed, emailError, noteErrors };
 }
 
 module.exports = { reportLandlines, buildEmail, updateBody, emailConfig, formatPhone };

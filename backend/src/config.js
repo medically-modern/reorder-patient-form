@@ -21,6 +21,7 @@ const COLUMNS = {
   DOB:              "text_mkvdefh1",
   GENDER:           "color_mm1zgyy2",
   PHONE:            "phone_mkp0q3cw",
+  CAN_TEXT:         "color_mm72jg9e", // status Yes / No — set to No by src/landlines.js
   EMAIL:            "email_mkp01rrw",
   ADDRESS:          "location_mkp0rs0v",
 

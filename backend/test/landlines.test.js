@@ -8,7 +8,12 @@ const env = { LANDLINE_EMAIL_TO: "a@example.com", EMAIL_FROM: "b@example.com", G
 
 function stubs() {
   const s = { updates: [], alerts: [], sent: [] };
-  s.mondayQuery = async (q, v) => { s.updates.push(v); return { create_update: { id: "1" } }; };
+  s.columns = [];
+  s.getStatusIndexMap = async () => ({ color_mm72jg9e: { yes: 1, no: 2 } });
+  s.mondayQuery = async (q, v) => {
+    if (q.includes("change_column_value")) { s.columns.push(v); return { change_column_value: { id: v.id } }; }
+    s.updates.push(v); return { create_update: { id: "1" } };
+  };
   s.notifyError = async (t, b) => { s.alerts.push(b); };
   s.fetch = async (url, opts) => {
     if (url.includes("oauth2")) return { ok: true, json: async () => ({ access_token: "t" }) };
@@ -22,6 +27,9 @@ test("notes the number that failed on the item and sends one email", async () =>
   const s = stubs();
   const r = await reportLandlines(L, { ...s, env });
   assert.equal(r.noted, 1);
+  assert.equal(r.flagged, 1);
+  assert.deepEqual(s.columns[0], { b: "18407459988", id: "111", c: "color_mm72jg9e", v: JSON.stringify({ index: 2 }) });
+  assert.match(s.updates[0].body, /Can Text" set to No because of this number/);
   assert.equal(r.emailed, true);
   assert.equal(s.updates[0].id, "111");
   assert.match(s.updates[0].body, /\(555\) 555-0123/);
@@ -42,4 +50,15 @@ test("email not configured → the list goes to ntfy instead", async () => {
 
 test("formatPhone", () => {
   assert.equal(formatPhone("+15555550123"), "(555) 555-0123");
+});
+
+test("no \"No\" label on the live board → Can Text is not written, update still posted, ntfy says why", async () => {
+  const s = stubs();
+  s.getStatusIndexMap = async () => ({ color_mm72jg9e: { yes: 1 } });
+  const r = await reportLandlines(L, { ...s, env });
+  assert.equal(r.flagged, 0);
+  assert.equal(s.columns.length, 0);
+  assert.equal(r.noted, 1);
+  assert.equal(s.alerts.length, 1);
+  assert.match(s.alerts[0], /no "No" label/);
 });

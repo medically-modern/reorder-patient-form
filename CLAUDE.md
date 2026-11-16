@@ -172,8 +172,9 @@ that failed again, or a re-send that could not be sent. `verifySmsBatch()` is th
 
 ⚠️ **"Landline" numbers are not failures.** When the original text AND its re-send both come back
 with a RingCentral `deliveryErrorCode` that means the number cannot take texts (`CANT_TEXT_CODES`
-in `queue.js`: `SMS-CAR-400`, `SMS-CAR-411`), `src/landlines.js` posts a Monday update on the item
-naming that exact number and code (a patient may have other numbers that do take texts) and
+in `queue.js`: `SMS-CAR-400`, `SMS-CAR-411`), `src/landlines.js` sets **Can Text** (`COLUMNS.CAN_TEXT`
+`color_mm72jg9e`) to No (index read live) and posts a Monday update on the item naming that exact
+number and code (a patient may have other numbers saved), and
 emails the list (`LANDLINE_EMAIL_TO`, sent via Gmail as `EMAIL_FROM` with the `GOOGLE_*` refresh
 token). They are left out of the "SMS Delivery Issues" alert and are **not** skipped next cycle.
 Any other code (431 no reason, 430 spam, 5xx…) stays a normal failure. Email unset → the list goes to ntfy.
