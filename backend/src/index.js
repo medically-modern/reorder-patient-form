@@ -195,7 +195,7 @@ app.get("/auth/verify/:token", authLimiter, async (req, res) => {
     res.json({ success: true, uid: result.uid, token: result.jwt });
   } catch (err) {
     console.error("[auth] Error verifying reorder token:", err.message);
-    notifyError("Token Verify Error", `Token verification failed: ${err.message}`, { tags: ["lock"] });
+    notifyError("Token Verify Error", `Token verification failed: ${err.message}`, { tags: ["lock"], level: "error" });
     res.status(500).json({ error: "Something went wrong. Please try again." });
   }
 });

@@ -63,12 +63,15 @@ function notifyHealthCheck() {
  * @param {string} [opts.priority] - ntfy priority: "urgent", "high", "default", "low", "min"
  * @param {string[]} [opts.tags] - ntfy emoji tags, e.g. ["rotating_light", "warning"]
  * @param {string} [opts.uid] - Patient UID if relevant
+ * @param {string} [opts.level] - severity for the Command Center alerts page: "error" | "warn" | "info".
+ *   Sent as one extra ntfy tag (lvl-error / lvl-warn / lvl-info). Defaults from the priority
+ *   (urgent/max → error, high → warn, else info); callers pass it explicitly where that is wrong.
  */
 async function notifyError(title, message, opts = {}) {
   if (!NTFY_URL) return;
 
   const priority = opts.priority || "high";
-  const tags = opts.tags || ["rotating_light"];
+  const tags = [...(opts.tags || ["rotating_light"]), levelTag(opts.level, priority)];
   const fullMessage = opts.uid
     ? `[${SERVICE_NAME}] UID: ${opts.uid}\n\n${message}`
     : `[${SERVICE_NAME}]\n\n${message}`;
@@ -106,12 +109,24 @@ async function notifyError(title, message, opts = {}) {
   }
 }
 
+// The one severity tag every push carries. An explicit level wins; otherwise it follows
+// the ntfy priority, which is how this file has always graded urgency.
+const LEVELS = new Set(["error", "warn", "info"]);
+function levelTag(level, priority) {
+  if (LEVELS.has(level)) return `lvl-${level}`;
+  const p = String(priority || "").toLowerCase();
+  if (p === "urgent" || p === "max" || p === "5") return "lvl-error";
+  if (p === "high" || p === "4") return "lvl-warn";
+  return "lvl-info";
+}
+
 // ─── Pre-built notification helpers ───
 
 function notifyCronError(message, uid) {
   return notifyError("Reorder Cron Error", message, {
     tags: ["rotating_light", "clock"],
     uid,
+    level: "error",
   });
 }
 
@@ -119,6 +134,7 @@ function notifySmsError(message, uid) {
   return notifyError("SMS Send Failed", message, {
     tags: ["rotating_light", "phone"],
     uid,
+    level: "error",
   });
 }
 
@@ -126,6 +142,7 @@ function notifyMondayError(message, uid) {
   return notifyError("Monday Write Error", message, {
     tags: ["rotating_light", "memo"],
     uid,
+    level: "error",
   });
 }
 
@@ -133,12 +150,14 @@ function notifySubmissionError(message, uid) {
   return notifyError("Form Submission Error", message, {
     tags: ["rotating_light", "clipboard"],
     uid,
+    level: "error",
   });
 }
 
 function notifyAuthError(message) {
   return notifyError("Auth Error", message, {
     tags: ["rotating_light", "lock"],
+    level: "error",
   });
 }
 
@@ -147,14 +166,14 @@ function notifyCronSummary(processed, errors, skipped) {
     return notifyError(
       `Cron Complete: ${errors} error(s)`,
       `Processed: ${processed}, Errors: ${errors}, Skipped: ${skipped}`,
-      { priority: "high", tags: ["warning", "clock"] }
+      { priority: "high", tags: ["warning", "clock"], level: "warn" }
     );
   }
   // Always notify — confirms the cron ran successfully
   return notifyError(
     `Reorder Cron: ${processed} sent`,
     `Processed: ${processed}, Skipped: ${skipped}, Errors: 0`,
-    { priority: processed > 0 ? "default" : "low", tags: ["white_check_mark", "clock"] }
+    { priority: processed > 0 ? "default" : "low", tags: ["white_check_mark", "clock"], level: "info" }
   );
 }
 
@@ -162,13 +181,14 @@ function notifyUnhandled(type, error) {
   return notifyError(
     `Unhandled ${type}`,
     `${error.message}\n\n${error.stack || "No stack trace"}`,
-    { priority: "urgent", tags: ["skull"] }
+    { priority: "urgent", tags: ["skull"], level: "error" }
   );
 }
 
 module.exports = {
   notifyHealthCheck,
   notifyError,
+  levelTag,
   notifyCronError,
   notifySmsError,
   notifyMondayError,

@@ -479,7 +479,7 @@ async function verifySmsBatch(sentMessages, round, deps) {
       console.error(`[sms-verify] Could not report landline numbers: ${err.message}`);
       await notifyError("Landline report failed",
         `${landlines.length} patient number(s) could not receive the reorder text, but noting/emailing them failed: ${err.message}\n` +
-        landlines.map(l => `  - ${who(l)}: ${l.errorCodes.join(", ")}`).join("\n"), { tags: ["warning", "sms"] });
+        landlines.map(l => `  - ${who(l)}: ${l.errorCodes.join(", ")}`).join("\n"), { tags: ["warning", "sms"], level: "error" });
     }
   }
 
@@ -501,7 +501,7 @@ async function verifySmsBatch(sentMessages, round, deps) {
   if (problems.length > 0) {
     const alertBody = `SMS Delivery Verification (${label}) — ${sentMessages.length} checked, ${delivered.length} delivered, ${problems.length} issue(s):\n\n${problems.join("\n\n")}`;
     console.error(`[sms-verify] ALERT:\n${alertBody}`);
-    await notifyError("SMS Delivery Issues", alertBody, { tags: ["warning", "sms"] });
+    await notifyError("SMS Delivery Issues", alertBody, { tags: ["warning", "sms"], level: "error" });
   }
 
   return {
@@ -545,7 +545,7 @@ function startSmsVerifyWorker() {
   _smsVerifyWorker.on("failed", (job, err) => {
     const { notifyError } = require("./notify");
     console.error(`[sms-verify] Verification job failed: ${err.message}`);
-    notifyError("SMS Verify Job Failed", `Batch verification failed after ${job.attemptsMade} attempts: ${err.message}`, { tags: ["warning", "sms"] });
+    notifyError("SMS Verify Job Failed", `Batch verification failed after ${job.attemptsMade} attempts: ${err.message}`, { tags: ["warning", "sms"], level: "error" });
   });
 
   _smsVerifyWorker.on("error", (err) => {

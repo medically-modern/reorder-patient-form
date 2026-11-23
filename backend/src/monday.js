@@ -21,7 +21,7 @@ let _queueEnabled = false;
 // FRIDAY_API_KEY and FRIDAY_BOARD_IDS (18407459988). Its alerts go out through this service's own ntfy.
 const fridayForward = createFridayForward({
   env: process.env, log: console.log, service: "reorder-patient-form",
-  alert: (title, body) => notifyError(title, body),
+  alert: (title, body, level) => notifyError(title, body, { level }),
 });
 
 // ─── Input validation ───

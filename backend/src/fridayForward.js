@@ -87,14 +87,21 @@ function errorText(status, json) {
   return `HTTP ${status}${m ? `: ${String(typeof m === "string" ? m : JSON.stringify(m)).slice(0, 300)}` : ""}`;
 }
 
-/** The built-in alert: a push to NTFY_URL (or NTFY_BASE) / NTFY_TOPIC when both are set; otherwise nothing. */
+/** The ntfy severity tag every push carries, so the Command Center alerts page can sort Error / Warning / Info. */
+const LEVELS = new Set(["error", "warn", "info"]);
+const levelTag = (level) => `lvl-${LEVELS.has(level) ? level : "warn"}`;
+
+/**
+ * The built-in alert: a push to NTFY_URL (or NTFY_BASE) / NTFY_TOPIC when both are set; otherwise nothing.
+ * `level` is "error" | "warn" | "info" (default "warn") and becomes one extra lvl-* tag.
+ */
 function ntfyAlert(env = process.env, fetchImpl = globalThis.fetch) {
   const base = String(env.NTFY_URL || env.NTFY_BASE || "").replace(/\/+$/, "");
   const topic = String(env.NTFY_TOPIC || "");
   if (!base || !topic) return null;
-  return async (title, body) => {
+  return async (title, body, level = "warn") => {
     const res = await fetchImpl(`${base}/${encodeURIComponent(topic)}`, {
-      method: "POST", headers: { Title: String(title).replace(/[^\x20-\x7e]/g, "?").slice(0, 120), Priority: "default", Tags: "warning" },
+      method: "POST", headers: { Title: String(title).replace(/[^\x20-\x7e]/g, "?").slice(0, 120), Priority: "default", Tags: `warning,${levelTag(level)}` },
       body: String(body).slice(0, 2000), signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) throw new Error(`ntfy HTTP ${res.status}`);
@@ -103,7 +110,8 @@ function ntfyAlert(env = process.env, fetchImpl = globalThis.fetch) {
 
 /**
  * `service` names this process in the idempotency keys and the alerts. `alert(title, body)` is
- * awaited, caught and throttled to one an hour per kind; it defaults to the ntfy push above.
+ * awaited, caught and throttled to one an hour per kind; it defaults to the ntfy push above. Each alert
+ * is called as `alert(title, body, level)` with level "error" | "warn" | "info".
  */
 function createFridayForward({
   env = process.env, log = console.log, alert = undefined, fetchImpl = globalThis.fetch, service = "service", now = () => Date.now(),
@@ -121,13 +129,13 @@ function createFridayForward({
   let bytesQueued = 0, seq = 0, timer = null, busy = false;
   const stats = { queued: 0, delivered: 0, files_delivered: 0, problems: 0, dead: 0, auth: 0, retries: 0, dropped: 0 };
 
-  async function raise(kind, title, body) {
+  async function raise(kind, level, title, body) {
     try {
       if (!sendAlert) return;
       const t = now();
       if (alerts.get(kind) && t - alerts.get(kind) < 3_600_000) return;
       alerts.set(kind, t);
-      await sendAlert(`${service}: ${title}`, body);
+      await sendAlert(`${service}: ${title}`, body, level);
     } catch (e) { log(`[friday-forward] alert failed: ${e.message}`); }
   }
 
@@ -135,7 +143,7 @@ function createFridayForward({
     if (queue.length >= MAX_QUEUED || bytesQueued + (row.bytes?.length || 0) > MAX_QUEUED_BYTES) {
       stats.dropped++;
       log(`[friday-forward] queue full (${queue.length} rows, ${bytesQueued} bytes): dropped a ${row.kind} for item ${row.itemId ?? "?"}`);
-      raise("full", "the Friday forward's queue is full", `${queue.length} rows and ${bytesQueued} bytes waiting; a ${row.kind} was dropped. Is Friday answering? Friday's Monday load picks up what is missing.`);
+      raise("full", "warn", "the Friday forward's queue is full", `${queue.length} rows and ${bytesQueued} bytes waiting; a ${row.kind} was dropped. Is Friday answering? Friday's Monday load picks up what is missing.`);
       return false;
     }
     row.id = ++seq; row.attempts = 0; row.next_at = 0; row.idem = `${service}-${randomUUID()}`;
@@ -203,12 +211,12 @@ function createFridayForward({
       finish();
       stats.dead++;
       log(`[friday-forward] #${row.id} (${row.kind}, item ${row.itemId ?? "?"}) given up after ${row.attempts} tr${row.attempts === 1 ? "y" : "ies"}: ${error}`);
-      raise("dead", "a Friday forward gave up", `${row.kind} #${row.id} for item ${row.itemId ?? "?"} after ${row.attempts} tries: ${error}. Monday has it; Friday does not. Friday's board check will list it, and its Monday load picks it up.`);
+      raise("dead", "error", "a Friday forward gave up", `${row.kind} #${row.id} for item ${row.itemId ?? "?"} after ${row.attempts} tries: ${error}. Monday has it; Friday does not. Friday's board check will list it, and its Monday load picks it up.`);
       return { id: row.id, dead: true, error };
     }
     const delay = kind === "auth" ? AUTH_RETRY_MS : nextDelayMs(row.attempts);
     row.next_at = now() + delay;
-    if (kind === "auth") { stats.auth++; raise("auth", "Friday refused this service's key", `${error}. FRIDAY_API_KEY on this service needs a valid Friday key; the forward waits and retries every ${AUTH_RETRY_MS / 60000} minutes.`); }
+    if (kind === "auth") { stats.auth++; raise("auth", "error", "Friday refused this service's key", `${error}. FRIDAY_API_KEY on this service needs a valid Friday key; the forward waits and retries every ${AUTH_RETRY_MS / 60000} minutes.`); }
     else stats.retries++;
     return { id: row.id, retry: true, in: delay, error };
   }
@@ -242,4 +250,4 @@ function createFridayForward({
   return { enabled, why, onMutation, onFile, tick, stop, status, stats, queue };
 }
 
-module.exports = { DEFAULT_BOARD_IDS, DEFAULT_BOARD, RETRY_DELAYS_MS, MAX_ATTEMPTS, AUTH_RETRY_MS, MAX_QUEUED, MAX_QUEUED_BYTES, MAX_FILE_BYTES, isMutation, boardIdOf, shouldForward, classify, nextDelayMs, summarize, errorText, ntfyAlert, createFridayForward };
+module.exports = { DEFAULT_BOARD_IDS, DEFAULT_BOARD, RETRY_DELAYS_MS, MAX_ATTEMPTS, AUTH_RETRY_MS, MAX_QUEUED, MAX_QUEUED_BYTES, MAX_FILE_BYTES, isMutation, boardIdOf, shouldForward, classify, nextDelayMs, summarize, errorText, levelTag, ntfyAlert, createFridayForward };

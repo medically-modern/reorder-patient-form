@@ -4,6 +4,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { createFridayForward, shouldForward, boardIdOf, classify, summarize, nextDelayMs, RETRY_DELAYS_MS, MAX_ATTEMPTS, AUTH_RETRY_MS } = require("../src/fridayForward.js");
+const { ntfyAlert } = require("../src/fridayForward.js");
 
 const PSO = "18406352652";
 const MUT = `mutation($board:ID!,$group:String!,$name:String!,$cv:JSON!){ create_item(board_id:$board, group_id:$group, item_name:$name, column_values:$cv){ id } }`;
@@ -22,7 +23,7 @@ function fakeFriday() {
   };
   return { impl, calls, answers };
 }
-const make = (f, extra = {}) => { let t = 1_000_000; const fwd = createFridayForward({ env, log: () => {}, alert: async (title, body) => f.alerts?.push({ title, body }), fetchImpl: f.impl, service: "svc", now: () => t, ...extra }); fwd.stop(); fwd.advance = (ms) => { t += ms; }; return fwd; };
+const make = (f, extra = {}) => { let t = 1_000_000; const fwd = createFridayForward({ env, log: () => {}, alert: async (title, body, level) => f.alerts?.push({ title, body, level }), fetchImpl: f.impl, service: "svc", now: () => t, ...extra }); fwd.stop(); fwd.advance = (ms) => { t += ms; }; return fwd; };
 
 test("pure rules: which documents go, how an answer is classified, the backoff", () => {
   assert.equal(shouldForward({ query: MUT, variables: { board: PSO } }), true);
@@ -94,7 +95,7 @@ test("a 503 is retried with backoff under the same idempotency key, holding the 
   }
   assert.deepEqual(delays, RETRY_DELAYS_MS);
   assert.equal(new Set(f.calls.slice(0, 6).map((c) => c.headers["idempotency-key"])).size, 1, "one key across the retries");
-  assert.equal(f.alerts.length, 1); assert.match(f.alerts[0].title, /^svc: a Friday forward gave up/);
+  assert.equal(f.alerts.length, 1); assert.match(f.alerts[0].title, /^svc: a Friday forward gave up/); assert.equal(f.alerts[0].level, "error");
   assert.equal((await fwd.tick()).done, true, "the next row goes once the dead one is dropped");
   assert.equal(fwd.status().dead, 1); assert.equal(fwd.status().retries, 5);
 });
@@ -109,7 +110,7 @@ test("a refusal Friday read is dead at once; a bad key waits ten minutes and nev
   f.answers.push({ status: 401, json: { error: { message: "bad key" } } });
   const r = await fwd.tick();
   assert.equal(r.retry, true); assert.equal(r.in, AUTH_RETRY_MS);
-  assert.equal(f.alerts.at(-1).title, "svc: Friday refused this service's key");
+  assert.equal(f.alerts.at(-1).title, "svc: Friday refused this service's key"); assert.equal(f.alerts.at(-1).level, "error");
   fwd.advance(AUTH_RETRY_MS);
   f.answers.push({ throw: "fetch failed" });
   const r2 = await fwd.tick();
@@ -143,4 +144,17 @@ test("onMutation and onFile never throw, whatever they are handed; an oversized 
   assert.equal(fwd.onFile({ itemId: "1", column: "file_x", bytes: Buffer.alloc(0) }), false);
   assert.equal(fwd.onFile({ itemId: "1", column: "file_x", bytes: Buffer.alloc(25 * 1024 * 1024 + 1) }), false);
   assert.equal(fwd.queue.length, 0);
+});
+
+test("the ntfy push keeps its title, priority and warning tag and adds exactly one lvl-* tag", async () => {
+  const sent = [];
+  const fetchImpl = async (url, init) => { sent.push({ url, headers: init.headers, body: init.body }); return new Response("{}", { status: 200 }); };
+  const push = ntfyAlert({ NTFY_URL: "https://ntfy.test/", NTFY_TOPIC: "t" }, fetchImpl);
+  await push("svc: a Friday forward gave up", "body", "error");
+  await push("svc: queue full", "body", "warn");
+  await push("svc: hello", "body");
+  assert.deepEqual(sent.map((c) => c.headers.Tags), ["warning,lvl-error", "warning,lvl-warn", "warning,lvl-warn"]);
+  assert.equal(sent[0].headers.Priority, "default"); assert.equal(sent[0].headers.Title, "svc: a Friday forward gave up");
+  assert.equal(sent[0].url, "https://ntfy.test/t"); assert.equal(sent[0].body, "body");
+  assert.equal(ntfyAlert({}, fetchImpl), null);
 });

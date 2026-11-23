@@ -167,7 +167,7 @@ function recordBad(status, detail) {
 // here would make skuStatus <-> monday <-> notify a cycle at load time.
 function notify(title, message, priority) {
   try {
-    require("./notify").notifyError(title, message, { priority, tags: ["package"] });
+    require("./notify").notifyError(title, message, { priority, tags: ["package"], level: "warn" });
   } catch (err) {
     console.warn(`[sku] could not send alert: ${err.message}`);
   }

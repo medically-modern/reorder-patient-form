@@ -165,7 +165,9 @@ async function reportLandlines(landlines, deps = {}) {
       `${subject}\n\n${text}` +
       (emailed ? "" : `\n\nEmail NOT sent: ${emailError}`) +
       (noteErrors.length ? `\n\nMonday write failed for: ${noteErrors.join("; ")}` : ""),
-      { tags: ["telephone_receiver"] });
+      // A failed Monday note or a configured email that failed to send is an error; the list
+      // arriving here only because email is not configured is a to-do, not a failure.
+      { tags: ["telephone_receiver"], level: noteErrors.length || cfg.configured ? "error" : "warn" });
   }
   console.log(`[landlines] ${landlines.length} patient(s): Can Text=No on ${flagged}, ${noted} noted on Monday, email ${emailed ? "sent" : `not sent (${emailError})`}`);
   return { flagged, noted, emailed, emailError, noteErrors };
