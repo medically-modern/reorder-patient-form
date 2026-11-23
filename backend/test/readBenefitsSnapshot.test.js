@@ -112,8 +112,15 @@ test("every flag code the contract lists has text in the generated snapshot", ()
     "DEDUCTIBLE_MISSING", "NO_BENEFIT_ROWS", "OUT_OF_NETWORK_ONLY", "BLUECARD_NO_DME_ROWS", "DUAL_MEDICAID_RESPONSE",
     "DEDUCTIBLE_INFERRED_ZERO", "DEDUCTIBLE_FAMILY_FALLBACK", "OOP_FAMILY_FALLBACK", "COINSURANCE_PLAN_LEVEL",
     "SUPPLEMENT_PLAN_LETTER_UNCONFIRMED", "COMMERCIAL_SECONDARY_PRESENT", "OOP_MISSING", "DEDUCTIBLE_REMAINING_DERIVED",
-    "COPAY_PLAN", "COPAY_ONCE_PER_DOS", "COPAY_PROVIDER_TYPE_CONDITIONAL", "DISCLAIMER_ROW_IGNORED",
-    "CARVEOUT_ROW_IGNORED", "QMB", "PAYER_RULE_APPLIED", "ZERO_OOP_PAYER", "PRIMARY_MEDICAID", "SECONDARY_MEDICAID_COVERS",
+    "COPAY_PLAN", "COPAY_ONCE_PER_DOS", "COPAY_PROVIDER_TYPE_CONDITIONAL",
+    "QMB", "PAYER_RULE_APPLIED", "ZERO_OOP_PAYER", "PRIMARY_MEDICAID", "SECONDARY_MEDICAID_COVERS",
+    // Added by the estimator since the 2026-10-07 export (snapshot 86998e0): the patient's own
+    // paid claims feeding the coinsurance, and the Medigap-with-Advantage contradiction.
+    "PATIENT_CLAIMS_APPLIED", "PATIENT_CLAIMS_DISAGREE", "PATIENT_CLAIMS_ONE_CLAIM",
+    "PATIENT_CLAIMS_OVERRIDE", "MEDIGAP_WITH_MEDICARE_ADVANTAGE",
+    // ⚠️ DISCLAIMER_ROW_IGNORED and CARVEOUT_ROW_IGNORED were RETIRED by the estimator and are
+    // deliberately not listed: they are no longer in the export, so asserting them would only
+    // pin a flag nothing writes. A legacy row still carrying one renders as the bare code.
     "LABEL_MISMATCH", "EP_PUMP_UNVERIFIED",
   ];
   for (const code of contract) {

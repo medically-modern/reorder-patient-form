@@ -5,19 +5,19 @@
   ],
   "generatedFrom": {
     "repo": "medically-modern/OOP-Cost-Estimator",
-    "sha": "f653925",
-    "at": "2026-10-07T20:12:06+00:00",
+    "sha": "86998e0",
+    "at": "2026-11-23T03:00:29+00:00",
     "chargeSchedule": {
       "repo": "medicallymodern1/stedi-monday-integration",
-      "sha": "d59da97",
-      "at": "2026-10-07T15:56:22+00:00"
+      "sha": "23812c2",
+      "at": "2026-11-18T20:42:29+00:00"
     }
   },
   "versions": {
     "rules": "2026.10.08",
-    "resolver": "br-2026.10.08.4",
-    "estimate": "oop-2026.10.08.1",
-    "rates": "2026.10.08"
+    "resolver": "br-2026.10.08.31",
+    "estimate": "oop-2026.11.17.3.r3.1",
+    "rates": "2026.11.17.3.r3"
   },
   "confidence": [
     "High",
@@ -26,8 +26,8 @@
   ],
   "flags": {
     "TIER_UNVERIFIED": {
-      "text": "Plan has in-network tiers; which tier we are in is not verified — call the payer and add it to the tier rulebook",
-      "confidence": "Low"
+      "text": "Plan has in-network tiers; which tier we are in is not verified — range shown until a call confirms the tier (then add it to the tier rulebook)",
+      "confidence": "Medium"
     },
     "COINSURANCE_AMBIGUOUS": {
       "text": "271 lists more than one in-network DME coinsurance and no rule picks one — range shown",
@@ -73,6 +73,10 @@
       "text": "Plan charges a per-item copay in addition to / instead of coinsurance",
       "confidence": "Info"
     },
+    "MEDIGAP_WITH_MEDICARE_ADVANTAGE": {
+      "text": "Secondary Insurance says Medicare Supplement, but the primary is a Medicare Advantage plan — a Medigap plan never pays with Medicare Advantage, so it is ignored (usually the 'supplement' is the Advantage plan itself, e.g. an employer retiree plan). Confirm the real secondary; if none, set Secondary Insurance to None",
+      "confidence": "Info"
+    },
     "SUPPLEMENT_PLAN_LETTER_UNCONFIRMED": {
       "text": "Medicare Supplement on file — it pays the Part B 20% ($0 to the patient, High); the Welcome Call still asks the plan letter (K/L/HD pay less)",
       "confidence": "Info"
@@ -80,14 +84,6 @@
     "COMMERCIAL_SECONDARY_PRESENT": {
       "text": "A commercial secondary was provided; coordination not modelled — primary share shown",
       "confidence": "Medium"
-    },
-    "DISCLAIMER_ROW_IGNORED": {
-      "text": "A 271 cost-share row carried disclaimer text and was ignored",
-      "confidence": "Info"
-    },
-    "CARVEOUT_ROW_IGNORED": {
-      "text": "271 rows for other devices (hearing aids, breast pumps, speech devices ...) were ignored",
-      "confidence": "Info"
     },
     "NO_BENEFIT_ROWS": {
       "text": "271 carries no benefit rows — nothing to resolve",
@@ -187,7 +183,7 @@
     },
     "DEDUCTIBLE_APPLIES_ON_ZERO_BENEFIT": {
       "text": "0% coinsurance on diabetic DME is claims-proven for this plan, but the plan deductible still applies — the first order is up to the deductible remaining",
-      "confidence": "Medium"
+      "confidence": "Info"
     },
     "DEDUCTIBLE_ON_ZERO_UNKNOWN": {
       "text": "The plan has deductible remaining and nothing proves whether it applies before the 0% / copay benefit — quoted as $0 up to the deductible; confirm on the benefits call",
@@ -204,6 +200,22 @@
     "WRONG_PAYER": {
       "text": "This 271 shows the check ran under the wrong payer — re-run under the right one; no estimate until then",
       "confidence": "Low"
+    },
+    "PATIENT_CLAIMS_APPLIED": {
+      "text": "The patient's own paid claims this plan year were used for this product (confirm / pick / fill the 271's cost share)",
+      "confidence": "Info"
+    },
+    "PATIENT_CLAIMS_OVERRIDE": {
+      "text": "The patient's own last two (or more) claims paid at a different coinsurance than the 271 / rule — the claims win",
+      "confidence": "Info"
+    },
+    "PATIENT_CLAIMS_DISAGREE": {
+      "text": "One claim of the patient's paid at a different coinsurance than the 271 / rule — a range until a second claim agrees",
+      "confidence": "Medium"
+    },
+    "PATIENT_CLAIMS_ONE_CLAIM": {
+      "text": "The coinsurance comes from one of the patient's claims (the 271 had no usable row) — a second claim confirms it",
+      "confidence": "Medium"
     },
     "DO_NOT_SHARE_WITH_PATIENT": {
       "text": "Internal figure only — do not share the out-of-pocket estimate with the patient (Horizon BCBS)",
