@@ -10,7 +10,10 @@ const { createFridayForward } = require("./fridayForward");
 const { readBenefitsSnapshot } = require("./oopEstimator");
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
-const API_URL = "https://api.monday.com/v2";
+// Monday's API and file upload addresses. Settings so the January cutover can point them at Friday
+// (/v2, /v2/file); unset, they are Monday's own.
+const API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
+const FILE_URL = process.env.MONDAY_FILE_URL || "https://api.monday.com/v2/file";
 
 let _queueEnabled = false;
 
@@ -690,7 +693,7 @@ async function uploadFileToMonday(itemId, columnId, fileBuffer, fileName) {
   try {
     console.log(`[monday] Uploading file "${fileName}" to item ${itemId}, column ${columnId} (${fileBuffer.length} bytes)`);
 
-    const res = await fetch(`${API_URL}/file`, {
+    const res = await fetch(FILE_URL, {
       method: "POST",
       headers: {
         Authorization: MONDAY_TOKEN,

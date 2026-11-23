@@ -18,7 +18,8 @@
 
 const { SUBSCRIPTION_BOARD_ID, COLUMNS, RETIRED_OOP_WEBHOOK_COLUMNS } = require("./config");
 
-const API_URL = "https://api.monday.com/v2";
+// Monday's API address. A setting so the January cutover can point it at Friday (/v2); unset, it is Monday.
+const API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
 const EVENT = "change_specific_column_value";
 
 async function monday(token, query, variables = {}) {

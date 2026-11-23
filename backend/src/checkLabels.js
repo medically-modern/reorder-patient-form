@@ -23,7 +23,8 @@ const path = require("path");
 const { SUBSCRIPTION_BOARD_ID, COLUMNS } = require("./config");
 const { SKU_BOARD_ID, GROUPS, alias } = require("./skuStatus");
 
-const API_URL = "https://api.monday.com/v2";
+// Monday's API address. A setting so the January cutover can point it at Friday (/v2); unset, it is Monday.
+const API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
 
 // Products the form can offer that have no row on the Cardinal SKU Tracker, each with
 // the reason. A product not listed here and missing from the tracker is a coverage hole:
