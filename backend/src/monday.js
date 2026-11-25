@@ -7,6 +7,7 @@ const {
 const { enqueueWriteAndWait, startWorker, startReorderWorker, startSmsWorker, startSmsVerifyWorker, startOopRefreshWorker } = require("./queue");
 const { notifyMondayError, notifyError } = require("./notify");
 const { createFridayForward } = require("./fridayForward");
+const { createFridayShadow } = require("./fridayShadow");
 const { readBenefitsSnapshot } = require("./oopEstimator");
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
@@ -26,6 +27,14 @@ const fridayForward = createFridayForward({
   env: process.env, log: console.log, service: "reorder-patient-form",
   alert: (title, body, level) => notifyError(title, body, { level }),
 });
+
+// The Friday read shadow (src/fridayShadow.js, the same file every service that reads Monday runs): after a READ
+// through mondayQuery has Monday's answer, the read and that answer are handed to Friday's /v2/shadow, which runs
+// it on Friday and keeps how the two compare (counts and paths, never a value). Started on a later turn of the
+// event loop, never awaited, never throws, never retried: it cannot delay, change or fail a Monday read. Only the
+// final answer of mondayQuery's retries, never a mutation. OFF unless FRIDAY_SHADOW=1 (reuses FRIDAY_URL /
+// FRIDAY_API_KEY). Its counts are on /health.
+const fridayShadow = createFridayShadow({ env: process.env, log: console.log, reader: "reorder-patient-form" });
 
 // ─── Input validation ───
 
@@ -47,6 +56,7 @@ const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 
 async function mondayQuery(query, variables = {}, _attempt = 1) {
+  const startedAt = Date.now();
   const res = await fetch(API_URL, {
     method: "POST",
     headers: {
@@ -73,7 +83,9 @@ async function mondayQuery(query, variables = {}, _attempt = 1) {
     return mondayQuery(query, variables, _attempt + 1);
   }
 
-  const data = await res.json();
+  // The body as text, then parsed: the same errors as res.json(), and the read shadow gets Monday's answer as it came.
+  const text = await res.text();
+  const data = JSON.parse(text);
 
   if (data.errors) {
     const rateLimitError = data.errors.find((e) =>
@@ -89,6 +101,9 @@ async function mondayQuery(query, variables = {}, _attempt = 1) {
   }
 
   fridayForward.onMutation({ query, variables, data: data.data }); // Monday said yes: Friday hears the same write
+  // A read Monday answered (the final try only: a retry returned above): handed to the read shadow on a later turn,
+  // never awaited. The shadow skips a mutation itself.
+  if (res.ok) fridayShadow.onRead({ query, variables, apiVersion: "2024-10", status: res.status, text, ms: Date.now() - startedAt });
   return data.data;
 }
 
@@ -1018,6 +1033,7 @@ function initWriteQueue() {
 module.exports = {
   mondayQuery,
   fridayForward,
+  fridayShadow,
   findPatientByPhone,
   findPatientByUid,
   getPatientItemById,

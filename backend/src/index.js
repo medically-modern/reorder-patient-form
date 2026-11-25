@@ -125,6 +125,8 @@ app.get("/health", async (req, res) => {
     // The Friday forward (src/fridayForward.js): on or off, the boards it names, and its counts. A give-up is
     // also pushed, but a forward switched off or misconfigured says so only here.
     friday: require("./monday").fridayForward.status(),
+    // The Friday read shadow (src/fridayShadow.js): on or off and why, and its counts (never a value).
+    friday_shadow: require("./monday").fridayShadow.health(),
     cron: "active",
     timestamp: new Date().toISOString(),
   });

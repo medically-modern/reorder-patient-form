@@ -234,6 +234,12 @@ than **48 hours** is treated as untrustworthy rather than shown as fact.
   `FRIDAY_BOARD_IDS=18407459988`** (Railway variables, never in this public tree). `/health` shows it under
   `friday`. ⚠️ Keep `mondayQuery` and `uploadFileToMonday` the only Monday write paths:
   `test/fridayForwardWiring.test.js` fails on a new one.
+- **The Friday read shadow** (`backend/src/fridayShadow.js`, the same CommonJS file every service that reads Monday
+  carries): after a read through `mondayQuery` has Monday's answer (the final try only, never a mutation or a refusal),
+  the read and the answer are handed to Friday's `POST /v2/shadow`, which runs it on Friday and keeps how the two compare
+  (counts and paths, never a value). It starts on a later turn of the event loop, is never awaited, never throws, never
+  retries. **OFF unless `FRIDAY_SHADOW=1`**; it reuses `FRIDAY_URL` / `FRIDAY_API_KEY` (or `FRIDAY_SHADOW_URL` /
+  `FRIDAY_SHADOW_KEY`). `/health` shows it under `friday_shadow`; `test/fridayShadowWiring.test.js` pins it.
 - **Alerts go to ntfy** (`backend/src/notify.js`). ⚠️ `NTFY_TOPIC` is the *only* access control
   ntfy has, so it is **deliberately not in this public repo** — a Railway variable. Unset disables
   notifications rather than falling back to a guessable topic.
